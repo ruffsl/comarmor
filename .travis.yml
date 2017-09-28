@@ -1,0 +1,16 @@
+language: python
+
+python:
+  - 3.5
+
+sudo: false
+
+install:
+  - pip install coverage nose flake8 mock
+  - pip install git+https://github.com/PyCQA/flake8-import-order.git
+
+script:
+  - python setup.py nosetests -s
+
+notifications:
+  email: false
