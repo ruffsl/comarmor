@@ -3,11 +3,13 @@ language: python
 python:
   - 3.5
 
-sudo: false
+sudo: true
+dist: xenial
 
 install:
   - pip install coverage nose flake8 mock
   - pip install git+https://github.com/PyCQA/flake8-import-order.git
+  - sudo apt install python3-apparmor
 
 script:
   - python setup.py nosetests -s
