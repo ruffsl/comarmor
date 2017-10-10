@@ -1,6 +1,7 @@
 # ----------------------------------------------------------------------
 #    Copyright (C) 2013 Kshitij Gupta <kgupta8592@gmail.com>
 #    Copyright (C) 2014 Christian Boltz <apparmor@cboltz.de>
+#    Copyright (C) 2017 Ruffin White <roxfoxpox@gmail.com>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -14,7 +15,7 @@
 # ----------------------------------------------------------------------
 
 from apparmor.aare import AARE
-from apparmor.common import AppArmorBug, type_is_str
+from comarmor.common import ComArmorBug, type_is_str
 
 # setup module translations
 from apparmor.translations import init_translation
@@ -62,7 +63,7 @@ class BaseRule(object):
         '''checks rulepart and returns
            - (AARE, False) if rulepart is a (non-empty) string
            - (None, True) if rulepart is all_obj (typically *Rule.ALL)
-           - raises AppArmorBug if rulepart is an empty string or has a wrong type
+           - raises ComArmorBug if rulepart is an empty string or has a wrong type
 
            Parameters:
            - rulepart: the rule part to check (string or *Rule.ALL object)
@@ -75,11 +76,11 @@ class BaseRule(object):
             return None, True
         elif type_is_str(rulepart):
             if len(rulepart.strip()) == 0:
-                raise AppArmorBug('Passed empty %(partname)s to %(classname)s: %(rulepart)s' %
+                raise ComArmorBug('Passed empty %(partname)s to %(classname)s: %(rulepart)s' %
                         {'partname': partname, 'classname': self.__class__.__name__, 'rulepart': str(rulepart)})
             return AARE(rulepart, is_path=is_path, log_event=log_event), False
         else:
-            raise AppArmorBug('Passed unknown %(partname)s to %(classname)s: %(rulepart)s'
+            raise ComArmorBug('Passed unknown %(partname)s to %(classname)s: %(rulepart)s'
                     % {'partname': partname, 'classname': self.__class__.__name__, 'rulepart': str(rulepart)})
 
     def __repr__(self):
@@ -137,7 +138,7 @@ class BaseRule(object):
         '''check if other_rule is covered by this rule object'''
 
         if not type(other_rule) == type(self):
-            raise AppArmorBug('Passes %s instead of %s' % (str(other_rule),self.__class__.__name__))
+            raise ComArmorBug('Passes %s instead of %s' % (str(other_rule),self.__class__.__name__))
 
         if check_allow_deny and self.deny != other_rule.deny:
             return False
@@ -163,7 +164,7 @@ class BaseRule(object):
         '''check if other_* is covered by self_* - for plain str, int etc.'''
 
         if not other_value and not other_all:
-            raise AppArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
+            raise ComArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
 
         if not self_all:
             if other_all:
@@ -178,7 +179,7 @@ class BaseRule(object):
         '''check if other_* is covered by self_* - for lists'''
 
         if sanity_check and not other_value and not other_all:
-            raise AppArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
+            raise ComArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
 
         if not self_all:
             if other_all:
@@ -202,7 +203,7 @@ class BaseRule(object):
         '''check if other_* is covered by self_* - for AARE'''
 
         if not other_value and not other_all:
-            raise AppArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
+            raise ComArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
 
         if not self_all:
             if other_all:
@@ -233,7 +234,7 @@ class BaseRule(object):
         '''check if other_* is the same as self_* - for AARE'''
 
         if not other_value and not other_all:
-            raise AppArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
+            raise ComArmorBug('No %(cond_name)s specified in other %(rule_name)s rule' % {'cond_name': cond_name, 'rule_name': self.rule_name})
 
         if self_all != other_all:
             return False
@@ -254,7 +255,7 @@ class BaseRule(object):
            - a number between 0 and 10, where 0 means harmless and 10 means critical,
            - "unknown" (to be exact: the value specified for "unknown" as set when loading the severity database), or
            - sev_db.NOT_IMPLEMENTED if no severity check is implemented for this rule type.
-           sev_db must be an apparmor.severity.Severity object.'''
+           sev_db must be an comarmor.severity.Severity object.'''
         return sev_db.NOT_IMPLEMENTED
 
     def logprof_header(self):
@@ -439,7 +440,7 @@ class BaseRuleset(object):
         if rule_to_delete:
             self.rules.pop(i)
         else:
-            raise AppArmorBug('Attempt to delete non-existing rule %s' % rule.get_raw(0))
+            raise ComArmorBug('Attempt to delete non-existing rule %s' % rule.get_raw(0))
 
     def delete_duplicates(self, include_rules):
         '''Delete duplicate rules.
@@ -496,13 +497,13 @@ def check_and_split_list(lst, allowed_keywords, all_obj, classname, keyword_name
     elif type(lst) in [list, tuple, set] and (len(lst) > 0 or allow_empty_list):
         result_list = set(lst)
     else:
-        raise AppArmorBug('Passed unknown %(type)s object to %(classname)s: %(unknown_object)s' %
+        raise ComArmorBug('Passed unknown %(type)s object to %(classname)s: %(unknown_object)s' %
                 {'type': type(lst), 'classname': classname, 'unknown_object': str(lst)})
 
     unknown_items = set()
     for item in result_list:
         if not item.strip():
-            raise AppArmorBug('Passed empty %(keyword_name)s to %(classname)s' %
+            raise ComArmorBug('Passed empty %(keyword_name)s to %(classname)s' %
                     {'keyword_name': keyword_name, 'classname': classname})
         if item not in allowed_keywords:
             unknown_items.add(item)
@@ -549,7 +550,7 @@ def parse_modifiers(matches):
         elif allowstr.strip() == 'deny':
             deny = True
         else:
-            raise AppArmorBug("Invalid allow/deny keyword %s" % allowstr)
+            raise ComArmorBug("Invalid allow/deny keyword %s" % allowstr)
 
     comment = parse_comment(matches)
 
@@ -560,4 +561,3 @@ def quote_if_needed(data):
     if ' ' in data:
         data = '"' + data + '"'
     return data
-

@@ -2,6 +2,7 @@
 #
 #    Copyright (C) 2012 Canonical Ltd.
 #    Copyright (C) 2013 Kshitij Gupta <kgupta8592@gmail.com>
+#    Copyright (C) 2017 Ruffin White <roxfoxpox@gmail.com>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -20,7 +21,7 @@ import subprocess
 import sys
 import termios
 import tty
-import apparmor.rules as rules
+import comarmor.rules as rules
 
 DEBUGGING = False
 
@@ -28,16 +29,16 @@ DEBUGGING = False
 #
 # Utility classes
 #
-class AppArmorException(Exception):
-    '''This class represents AppArmor exceptions'''
+class ComArmorException(Exception):
+    '''This class represents ComArmor exceptions'''
     def __init__(self, value):
         self.value = value
 
     def __str__(self):
         return repr(self.value)
 
-class AppArmorBug(Exception):
-    '''This class represents AppArmor exceptions "that should never happen"'''
+class ComArmorBug(Exception):
+    '''This class represents ComArmor exceptions "that should never happen"'''
     pass
 
 #
@@ -258,7 +259,7 @@ def type_is_str(var):
 class DebugLogger(object):
     def __init__(self, module_name=__name__):
         self.debugging = False
-        self.logfile = '/var/log/apparmor/logprof.log'
+        self.logfile = '/var/log/comarmor/logprof.log'
         self.debug_level = logging.DEBUG
         if os.getenv('LOGPROF_DEBUG', False):
             self.debugging = os.getenv('LOGPROF_DEBUG')
@@ -284,7 +285,7 @@ class DebugLogger(object):
             except IOError:
                 # Unable to open the default logfile, so create a temporary logfile and tell use about it
                 import tempfile
-                templog = tempfile.NamedTemporaryFile('w', prefix='apparmor', suffix='.log', delete=False)
+                templog = tempfile.NamedTemporaryFile('w', prefix='comarmor', suffix='.log', delete=False)
                 sys.stdout.write("\nCould not open: %s\nLogging to: %s\n" % (self.logfile, templog.name))
 
                 logging.basicConfig(filename=templog.name, level=self.debug_level,
