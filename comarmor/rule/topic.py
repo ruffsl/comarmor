@@ -1,5 +1,6 @@
 # ----------------------------------------------------------------------
 #    Copyright (C) 2016 Christian Boltz <apparmor@cboltz.de>
+#    Copyright (C) 2017 Ruffin White <roxfoxpox@gmail.com>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -14,8 +15,8 @@
 
 from apparmor.aare import AARE
 from apparmor.regex import RE_PROFILE_FILE_ENTRY, strip_quotes
-from apparmor.common import AppArmorBug, AppArmorException, type_is_str
-from apparmor.rule import BaseRule, BaseRuleset, check_and_split_list, logprof_value_or_all, parse_modifiers, quote_if_needed
+from comarmor.common import ComArmorBug, ComArmorException, type_is_str
+from comarmor.rule import BaseRule, BaseRuleset, check_and_split_list, logprof_value_or_all, parse_modifiers, quote_if_needed
 
 # setup module translations
 from apparmor.translations import init_translation
@@ -25,40 +26,40 @@ _ = init_translation()
 allow_exec_transitions          = ('ix', 'ux', 'Ux', 'px', 'Px', 'cx', 'Cx')  # 2 chars - len relevant for split_perms()
 allow_exec_fallback_transitions = ('pix', 'Pix', 'cix', 'Cix', 'pux', 'PUx', 'cux', 'CUx')  # 3 chars - len relevant for split_perms()
 deny_exec_transitions           = ('x')
-file_permissions                = ('m', 'r', 'w', 'a', 'l', 'k')  # also defines the write order
+topic_permissions                = ('p', 's')  # also defines the write order
 
 
 
-class FileRule(BaseRule):
-    '''Class to handle and store a single file rule'''
+class TopicRule(BaseRule):
+    '''Class to handle and store a single topic rule'''
 
     # Nothing external should reference this class, all external users
-    # should reference the class field FileRule.ALL
-    class __FileAll(object):
+    # should reference the class field TopicRule.ALL
+    class __TopicAll(object):
         pass
-    class __FileAnyExec(object):
+    class __TopicAnyExec(object):
         pass
 
-    ALL = __FileAll
-    ANY_EXEC = __FileAnyExec
+    ALL = __TopicAll
+    ANY_EXEC = __TopicAnyExec
 
-    rule_name = 'file'
+    rule_name = 'topic'
 
-    def __init__(self, path, perms, exec_perms, target, owner, file_keyword=False, leading_perms=False,
+    def __init__(self, path, perms, exec_perms, target, owner, topic_keyword=False, leading_perms=False,
                 audit=False, deny=False, allow_keyword=False, comment='', log_event=None):
-        '''Initialize FileRule
+        '''Initialize TopicRule
 
            Parameters:
-           - path: string, AARE or FileRule.ALL
-           - perms: string, set of chars or FileRule.ALL (must not contain exec mode)
+           - path: string, AARE or TopicRule.ALL
+           - perms: string, set of chars or TopicRule.ALL (must not contain exec mode)
            - exec_perms: None or string
-           - target: string, AARE or FileRule.ALL
+           - target: string, AARE or TopicRule.ALL
            - owner: bool
-           - file_keyword: bool
+           - topic_keyword: bool
            - leading_perms: bool
         '''
 
-        super(FileRule, self).__init__(audit=audit, deny=deny, allow_keyword=allow_keyword,
+        super(TopicRule, self).__init__(audit=audit, deny=deny, allow_keyword=allow_keyword,
                                              comment=comment, log_event=log_event)
 
         #                                                               rulepart        partperms       is_path log_event
@@ -72,17 +73,17 @@ class FileRule(BaseRule):
         if type_is_str(perms):
             perms, tmp_exec_perms = split_perms(perms, deny)
             if tmp_exec_perms:
-                raise AppArmorBug('perms must not contain exec perms')
+                raise ComArmorBug('perms must not contain exec perms')
         elif perms == None:
             perms = set()
 
-        self.perms, self.all_perms, unknown_items = check_and_split_list(perms, file_permissions, FileRule.ALL, 'FileRule', 'permissions', allow_empty_list=True)
+        self.perms, self.all_perms, unknown_items = check_and_split_list(perms, topic_permissions, TopicRule.ALL, 'TopicRule', 'permissions', allow_empty_list=True)
         if unknown_items:
-            raise AppArmorBug('Passed unknown perms to FileRule: %s' % str(unknown_items))
+            raise ComArmorBug('Passed unknown perms to TopicRule: %s' % str(unknown_items))
         if self.perms and 'a' in self.perms and 'w' in self.perms:
-            raise AppArmorException("Conflicting permissions found: 'a' and 'w'")
+            raise ComArmorException("Conflicting permissions found: 'a' and 'w'")
 
-        self.original_perms = None  # might be set by aa-logprof / aa.py propose_file_rules()
+        self.original_perms = None  # might be set by aa-logprof / aa.py propose_topic_rules()
 
         if exec_perms is None:
             self.exec_perms = None
@@ -91,36 +92,36 @@ class FileRule(BaseRule):
         elif type_is_str(exec_perms):
             if deny:
                 if exec_perms != 'x':
-                    raise AppArmorException(_("file deny rules only allow to use 'x' as execute mode, but not %s" % exec_perms))
+                    raise ComArmorException(_("topic deny rules only allow to use 'x' as execute mode, but not %s" % exec_perms))
             else:
                 if exec_perms == 'x':
-                    raise AppArmorException(_("Execute flag ('x') in file rule must specify the exec mode (ix, Px, Cx etc.)"))
+                    raise ComArmorException(_("Execute flag ('x') in topic rule must specify the exec mode (ix, Px, Cx etc.)"))
                 elif exec_perms not in allow_exec_transitions and exec_perms not in allow_exec_fallback_transitions:
-                    raise AppArmorBug('Unknown execute mode specified in file rule: %s' % exec_perms)
+                    raise ComArmorBug('Unknown execute mode specified in topic rule: %s' % exec_perms)
             self.exec_perms = exec_perms
         else:
-            raise AppArmorBug('Passed unknown perms object to FileRule: %s' % str(perms))
+            raise ComArmorBug('Passed unknown perms object to TopicRule: %s' % str(perms))
 
         if type(owner) is not bool:
-            raise AppArmorBug('non-boolean value passed to owner flag')
+            raise ComArmorBug('non-boolean value passed to owner flag')
         self.owner = owner
 
-        if type(file_keyword) is not bool:
-            raise AppArmorBug('non-boolean value passed to file keyword flag')
-        self.file_keyword = file_keyword
+        if type(topic_keyword) is not bool:
+            raise ComArmorBug('non-boolean value passed to topic keyword flag')
+        self.topic_keyword = topic_keyword
 
         if type(leading_perms) is not bool:
-            raise AppArmorBug('non-boolean value passed to leading permissions flag')
+            raise ComArmorBug('non-boolean value passed to leading permissions flag')
         self.leading_perms = leading_perms
 
         # XXX subset
 
-        # check for invalid combinations (bare 'file,' vs. path rule)
-#       if (self.all_paths and not self.all_perms) or (not self.all_paths and self.all_perms):
-#           raise AppArmorBug('all_paths and all_perms must be equal')
-# elif
+        # check for invalid combinations (bare 'topic,' vs. path rule)
+        # if (self.all_paths and not self.all_perms) or (not self.all_paths and self.all_perms):
+        #   raise ComArmorBug('all_paths and all_perms must be equal')
+        # elif
         if self.all_paths and (self.exec_perms or self.target):
-            raise AppArmorBug('exec perms or target specified for bare file rule')
+            raise ComArmorBug('exec perms or target specified for bare topic rule')
 
     @classmethod
     def _match(cls, raw_rule):
@@ -128,11 +129,11 @@ class FileRule(BaseRule):
 
     @classmethod
     def _parse(cls, raw_rule):
-        '''parse raw_rule and return FileRule'''
+        '''parse raw_rule and return TopicRule'''
 
         matches = cls._match(raw_rule)
         if not matches:
-            raise AppArmorException(_("Invalid file rule '%s'") % raw_rule)
+            raise ComArmorException(_("Invalid topic rule '%s'") % raw_rule)
 
         audit, deny, allow_keyword, comment = parse_modifiers(matches)
 
@@ -146,7 +147,7 @@ class FileRule(BaseRule):
             path = strip_quotes(matches.group('path2'))
             leading_perms = True
         else:
-            path = FileRule.ALL
+            path = TopicRule.ALL
 
         if matches.group('perms'):
             perms = matches.group('perms')
@@ -156,17 +157,17 @@ class FileRule(BaseRule):
             perms, exec_perms = split_perms(perms, deny)
             leading_perms = True
         else:
-            perms = FileRule.ALL
+            perms = TopicRule.ALL
             exec_perms = None
 
         if matches.group('target'):
             target = strip_quotes(matches.group('target'))
         else:
-            target = FileRule.ALL
+            target = TopicRule.ALL
 
-        file_keyword = bool(matches.group('file_keyword'))
+        topic_keyword = bool(matches.group('topic_keyword'))
 
-        return FileRule(path, perms, exec_perms, target, owner, file_keyword, leading_perms,
+        return TopicRule(path, perms, exec_perms, target, owner, topic_keyword, leading_perms,
                            audit=audit, deny=deny, allow_keyword=allow_keyword, comment=comment)
 
     def get_clean(self, depth=0):
@@ -179,14 +180,14 @@ class FileRule(BaseRule):
         elif self.path:
             path = quote_if_needed(self.path.regex)
         else:
-            raise AppArmorBug('Empty path in file rule')
+            raise ComArmorBug('Empty path in topic rule')
 
         if self.all_perms:
             perms = ''
         else:
             perms = self._joint_perms()
             if not perms:
-                raise AppArmorBug('Empty permissions in file rule')
+                raise ComArmorBug('Empty permissions in topic rule')
 
         if self.leading_perms:
             path_and_perms = '%s %s' % (perms, path)
@@ -198,24 +199,24 @@ class FileRule(BaseRule):
         elif self.target:
             target = ' -> %s' % quote_if_needed(self.target.regex)
         else:
-            raise AppArmorBug('Empty exec target in file rule')
+            raise ComArmorBug('Empty exec target in topic rule')
 
         if self.owner:
             owner = 'owner '
         else:
             owner = ''
 
-        if self.file_keyword:
-            file_keyword = 'file '
+        if self.topic_keyword:
+            topic_keyword = 'topic '
         else:
-            file_keyword = ''
+            topic_keyword = ''
 
         if self.all_paths and self.all_perms and not path and not perms and not target:
-            return('%s%s%sfile,%s' % (space, self.modifiers_str(), owner, self.comment))  # plain 'file,' rule
+            return('%s%s%stopic,%s' % (space, self.modifiers_str(), owner, self.comment))  # plain 'topic,' rule
         elif not self.all_paths and not self.all_perms and path and perms:
-            return('%s%s%s%s%s%s,%s' % (space, self.modifiers_str(), file_keyword, owner, path_and_perms, target, self.comment))
+            return('%s%s%s%s%s%s,%s' % (space, self.modifiers_str(), topic_keyword, owner, path_and_perms, target, self.comment))
         else:
-            raise AppArmorBug('Invalid combination of path and perms in file rule - either specify path and perms, or none of them')
+            raise ComArmorBug('Invalid combination of path and perms in topic rule - either specify path and perms, or none of them')
 
     def _joint_perms(self):
         '''return the permissions as string (using self.perms and self.exec_perms)'''
@@ -224,12 +225,12 @@ class FileRule(BaseRule):
     def _join_given_perms(self, perms, exec_perms):
         '''return the permissions as string (using the perms and exec_perms given as parameter)'''
         perm_string = ''
-        for perm in file_permissions:
+        for perm in topic_permissions:
             if perm in perms:
                 perm_string = perm_string + perm
 
         if exec_perms == self.ANY_EXEC:
-            raise AppArmorBug("FileRule.ANY_EXEC can't be used for actual rules")
+            raise ComArmorBug("TopicRule.ANY_EXEC can't be used for actual rules")
         if exec_perms:
             perm_string = perm_string + exec_perms
 
@@ -248,7 +249,7 @@ class FileRule(BaseRule):
 
         # ... and do our own sanity check
         if not other_rule.perms and not other_rule.all_perms and not other_rule.exec_perms:
-            raise AppArmorBug('No permission or exec permission specified in other file rule')
+            raise ComArmorBug('No permission or exec permission specified in other topic rule')
 
         if not self.exec_perms and other_rule.exec_perms:
             return False
@@ -273,7 +274,7 @@ class FileRule(BaseRule):
         if self.owner and not other_rule.owner:
             return False
 
-        # no check for file_keyword and leading_perms - they are not relevant for is_covered()
+        # no check for topic_keyword and leading_perms - they are not relevant for is_covered()
 
         # still here? -> then it is covered
         return True
@@ -282,8 +283,8 @@ class FileRule(BaseRule):
     def is_equal_localvars(self, rule_obj, strict):
         '''compare if rule-specific variables are equal'''
 
-        if not type(rule_obj) == FileRule:
-            raise AppArmorBug('Passed non-file rule: %s' % str(rule_obj))
+        if not type(rule_obj) == TopicRule:
+            raise ComArmorBug('Passed non-topic rule: %s' % str(rule_obj))
 
         if self.owner != rule_obj.owner:
             return False
@@ -303,8 +304,8 @@ class FileRule(BaseRule):
         if not self._is_equal_aare(self.target,         self.all_targets,       rule_obj.target,        rule_obj.all_targets,           'target'):
             return False
 
-        if strict:  # file_keyword and leading_perms are only cosmetics, but still a difference
-            if self.file_keyword != rule_obj.file_keyword:
+        if strict:  # topic_keyword and leading_perms are only cosmetics, but still a difference
+            if self.topic_keyword != rule_obj.topic_keyword:
                 return False
 
             if self.leading_perms != rule_obj.leading_perms:
@@ -361,7 +362,7 @@ class FileRule(BaseRule):
 
         headers += [_('New Mode'), perms]
 
-        # file_keyword and leading_perms are not really relevant
+        # topic_keyword and leading_perms are not really relevant
         return headers
 
     def glob(self):
@@ -382,27 +383,27 @@ class FileRule(BaseRule):
 
     def edit_header(self):
         if self.all_paths:
-            raise AppArmorBug('Attemp to edit bare file rule')
+            raise ComArmorBug('Attemp to edit bare topic rule')
 
         return(_('Enter new path: '), self.path.regex)
 
     def validate_edit(self, newpath):
         if self.all_paths:
-            raise AppArmorBug('Attemp to edit bare file rule')
+            raise ComArmorBug('Attemp to edit bare topic rule')
 
-        newpath = AARE(newpath, True)  # might raise AppArmorException if the new path doesn't start with / or a variable
+        newpath = AARE(newpath, True)  # might raise ComArmorException if the new path doesn't start with / or a variable
         return newpath.match(self.path)
 
     def store_edit(self, newpath):
         if self.all_paths:
-            raise AppArmorBug('Attemp to edit bare file rule')
+            raise ComArmorBug('Attemp to edit bare topic rule')
 
-        self.path = AARE(newpath, True)  # might raise AppArmorException if the new path doesn't start with / or a variable
+        self.path = AARE(newpath, True)  # might raise ComArmorException if the new path doesn't start with / or a variable
         self.raw_rule = None
 
 
-class FileRuleset(BaseRuleset):
-    '''Class to handle and store a collection of file rules'''
+class TopicRuleset(BaseRuleset):
+    '''Class to handle and store a collection of topic rules'''
 
     def get_rules_for_path(self, path, audit=False, deny=False):
         '''Get all rules matching the given path
@@ -410,7 +411,7 @@ class FileRuleset(BaseRuleset):
            If audit is True, only return rules with the audit flag set.
            If deny is True, only return matching deny rules'''
 
-        matching_rules = FileRuleset()
+        matching_rules = TopicRuleset()
         for rule in self.rules:
             if (rule.all_paths or rule.path.match(path)) and ((not deny) or rule.deny) and ((not audit) or rule.audit):
                 matching_rules.add(rule)
@@ -460,12 +461,12 @@ class FileRuleset(BaseRuleset):
         deny = {}
         for who in ['all', 'owner']:
             if all_perms['allow'][who]:
-                allow[who] = FileRule.ALL
+                allow[who] = TopicRule.ALL
             else:
                 allow[who] = perms['allow'][who]
 
             if all_perms['deny'][who]:
-                deny[who] = FileRule.ALL
+                deny[who] = TopicRule.ALL
             else:
                 deny[who] = perms['deny'][who]
 
@@ -475,7 +476,7 @@ class FileRuleset(BaseRuleset):
         '''Get all rules matching the given path that contain exec permissions
            path can be str or AARE'''
 
-        matches = FileRuleset()
+        matches = TopicRuleset()
 
         for rule in self.get_rules_for_path(path).rules:
             if rule.exec_perms:
@@ -489,7 +490,7 @@ class FileRuleset(BaseRuleset):
     def get_exec_conflict_rules(self, oldrule):
         '''check if one of the exec rules conflict with oldrule. If yes, return the conflicting rules.'''
 
-        conflictingrules = FileRuleset()
+        conflictingrules = TopicRuleset()
 
         if oldrule.exec_perms:
             execrules = self.get_exec_rules_for_path(oldrule.path)
@@ -511,25 +512,25 @@ def split_perms(perm_string, deny):
     exec_mode = None
 
     while perm_string:
-        if perm_string[0] in file_permissions:
+        if perm_string[0] in topic_permissions:
             perms.add(perm_string[0])
             perm_string = perm_string[1:]
         elif perm_string[0] == 'x':
             if not deny:
-                raise AppArmorException(_("'x' must be preceded by an exec qualifier (i, P, C or U)"))
+                raise ComArmorException(_("'x' must be preceded by an exec qualifier (i, P, C or U)"))
             exec_mode = 'x'
             perm_string = perm_string[1:]
         elif perm_string.startswith(allow_exec_transitions):
             if exec_mode and exec_mode != perm_string[0:2]:
-                raise AppArmorException(_('conflicting execute permissions found: %s and %s' % (exec_mode, perm_string[0:2])))
+                raise ComArmorException(_('conflicting execute permissions found: %s and %s' % (exec_mode, perm_string[0:2])))
             exec_mode = perm_string[0:2]
             perm_string = perm_string[2:]
         elif perm_string.startswith(allow_exec_fallback_transitions):
             if exec_mode and exec_mode != perm_string[0:3]:
-                raise AppArmorException(_('conflicting execute permissions found: %s and %s' % (exec_mode, perm_string[0:3])))
+                raise ComArmorException(_('conflicting execute permissions found: %s and %s' % (exec_mode, perm_string[0:3])))
             exec_mode = perm_string[0:3]
             perm_string = perm_string[3:]
         else:
-            raise AppArmorException(_('permission contains unknown character(s) %s' % perm_string))
+            raise ComArmorException(_('permission contains unknown character(s) %s' % perm_string))
 
     return perms, exec_mode
