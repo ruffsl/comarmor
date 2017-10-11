@@ -16,7 +16,13 @@
 from apparmor.aare import AARE
 from comarmor.regex import RE_PROFILE_TOPIC, strip_quotes
 from comarmor.common import ComArmorBug, ComArmorException, type_is_str
-from comarmor.rule import BaseRule, BaseRuleset, check_and_split_list, logprof_value_or_all, parse_modifiers, quote_if_needed
+from comarmor.rule import BaseRule, BaseRuleset
+from comarmor.rule import (
+    check_and_split_list,
+    logprof_value_or_all,
+    parse_modifiers,
+    quote_if_needed
+)
 
 # setup module translations
 from apparmor.translations import init_translation
@@ -50,8 +56,9 @@ class TopicRule(BaseRule):
         super(TopicRule, self).__init__(audit=audit, deny=deny, allow_keyword=allow_keyword,
                                         comment=comment, log_event=log_event)
 
-        #                                             rulepart, partperms, is_path, log_event
-        self.path, self.all_paths = self._aare_or_all(path, 'path', True, log_event)
+        self.path, self.all_paths = self._aare_or_all(
+            path, 'path', True, log_event)
+        #  rulepart, partperms, is_path, log_event
 
         self.can_glob = not self.all_paths
         self.can_glob_ext = not self.all_paths
@@ -61,11 +68,12 @@ class TopicRule(BaseRule):
             perms, tmp_exec_perms = split_perms(perms, deny)
             if tmp_exec_perms:
                 raise ComArmorBug('perms must not contain exec perms')
-        elif perms == None:
+        elif perms is None:
             perms = set()
 
         self.perms, self.all_perms, unknown_items = check_and_split_list(
-            perms, topic_permissions, TopicRule.ALL, 'TopicRule', 'permissions', allow_empty_list=True)
+            perms, topic_permissions, TopicRule.ALL,
+            'TopicRule', 'permissions', allow_empty_list=True)
         if unknown_items:
             raise ComArmorBug(
                 'Passed unknown perms to TopicRule: %s' % str(unknown_items))
@@ -126,7 +134,8 @@ class TopicRule(BaseRule):
         topic_keyword = 'topic '
 
         if not self.all_paths and not self.all_perms and path and perms:
-            return('%s%s%s%s,%s' % (space, self.modifiers_str(), topic_keyword, path_and_perms, self.comment))
+            return('%s%s%s%s,%s' % (space, self.modifiers_str(), topic_keyword,
+                                    path_and_perms, self.comment))
         else:
             raise ComArmorBug(
                 'Invalid combination of path and perms in topic rule - specify path and perms')
@@ -147,10 +156,12 @@ class TopicRule(BaseRule):
     def is_covered_localvars(self, other_rule):
         '''check if other_rule is covered by this rule object'''
 
-        if not self._is_covered_aare(self.path,         self.all_paths,         other_rule.path,        other_rule.all_paths,           'path'):
+        if not self._is_covered_aare(self.path,  self.all_paths,
+                                     other_rule.path, other_rule.all_paths, 'path'):
             return False
 
-        if not self._is_covered_list(self.perms,        self.all_perms,         other_rule.perms,       other_rule.all_perms,           'perms'):
+        if not self._is_covered_list(self.perms, self.all_perms,
+                                     other_rule.perms, other_rule.all_perms, 'perms'):
             return False
 
         # still here? -> then it is covered
@@ -162,7 +173,8 @@ class TopicRule(BaseRule):
         if not type(rule_obj) == TopicRule:
             raise ComArmorBug('Passed non-topic rule: %s' % str(rule_obj))
 
-        if not self._is_equal_aare(self.path,           self.all_paths,         rule_obj.path,          rule_obj.all_paths,             'path'):
+        if not self._is_equal_aare(self.path, self.all_paths,
+                                   rule_obj.path, rule_obj.all_paths, 'path'):
             return False
 
         if self.perms != rule_obj.perms:
@@ -265,14 +277,16 @@ class TopicRuleset(BaseRuleset):
 
         matching_rules = TopicRuleset()
         for rule in self.rules:
-            if (rule.all_paths or rule.path.match(path)) and ((not deny) or rule.deny) and ((not audit) or rule.audit):
+            if ((rule.all_paths or rule.path.match(path)) and
+                    ((not deny) or rule.deny) and
+                    ((not audit) or rule.audit)):
                 matching_rules.add(rule)
 
         return matching_rules
 
     def get_perms_for_path(self, path, audit=False, deny=False):
-        '''Get the summarized permissions of all rules matching the given path, and the list of paths involved in the calculation
-           path can be str or AARE
+        '''Get the summarized permissions of all rules matching the given path,
+           and the list of paths involved in the calculation path can be str or AARE
            If audit is True, only analyze rules with the audit flag set.
            If deny is True, only analyze matching deny rules
            Returns {'allow': set_of_perms,
