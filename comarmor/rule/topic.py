@@ -14,7 +14,7 @@
 # ----------------------------------------------------------------------
 
 from apparmor.aare import AARE
-from apparmor.regex import RE_PROFILE_FILE_ENTRY, strip_quotes
+from comarmor.regex import RE_PROFILE_TOPIC, strip_quotes
 from comarmor.common import ComArmorBug, ComArmorException, type_is_str
 from comarmor.rule import BaseRule, BaseRuleset, check_and_split_list, logprof_value_or_all, parse_modifiers, quote_if_needed
 
@@ -23,11 +23,7 @@ from apparmor.translations import init_translation
 _ = init_translation()
 
 
-allow_exec_transitions          = ('ix', 'ux', 'Ux', 'px', 'Px', 'cx', 'Cx')  # 2 chars - len relevant for split_perms()
-allow_exec_fallback_transitions = ('pix', 'Pix', 'cix', 'Cix', 'pux', 'PUx', 'cux', 'CUx')  # 3 chars - len relevant for split_perms()
-deny_exec_transitions           = ('x')
-topic_permissions                = ('p', 's')  # also defines the write order
-
+topic_permissions = ('p', 's', 'r')  # also defines the write order
 
 
 class TopicRule(BaseRule):
@@ -37,26 +33,18 @@ class TopicRule(BaseRule):
     # should reference the class field TopicRule.ALL
     class __TopicAll(object):
         pass
-    class __TopicAnyExec(object):
-        pass
 
     ALL = __TopicAll
-    ANY_EXEC = __TopicAnyExec
 
     rule_name = 'topic'
 
-    def __init__(self, path, perms, exec_perms, target, owner, topic_keyword=False, leading_perms=False,
+    def __init__(self, path, perms,
                 audit=False, deny=False, allow_keyword=False, comment='', log_event=None):
         '''Initialize TopicRule
 
            Parameters:
            - path: string, AARE or TopicRule.ALL
            - perms: string, set of chars or TopicRule.ALL (must not contain exec mode)
-           - exec_perms: None or string
-           - target: string, AARE or TopicRule.ALL
-           - owner: bool
-           - topic_keyword: bool
-           - leading_perms: bool
         '''
 
         super(TopicRule, self).__init__(audit=audit, deny=deny, allow_keyword=allow_keyword,
@@ -64,7 +52,6 @@ class TopicRule(BaseRule):
 
         #                                                               rulepart        partperms       is_path log_event
         self.path,          self.all_paths          = self._aare_or_all(path,           'path',         True,   log_event)
-        self.target,        self.all_targets,       = self._aare_or_all(target,         'target',       False,  log_event)
 
         self.can_glob = not self.all_paths
         self.can_glob_ext = not self.all_paths
@@ -80,52 +67,12 @@ class TopicRule(BaseRule):
         self.perms, self.all_perms, unknown_items = check_and_split_list(perms, topic_permissions, TopicRule.ALL, 'TopicRule', 'permissions', allow_empty_list=True)
         if unknown_items:
             raise ComArmorBug('Passed unknown perms to TopicRule: %s' % str(unknown_items))
-        if self.perms and 'a' in self.perms and 'w' in self.perms:
-            raise ComArmorException("Conflicting permissions found: 'a' and 'w'")
 
         self.original_perms = None  # might be set by aa-logprof / aa.py propose_topic_rules()
 
-        if exec_perms is None:
-            self.exec_perms = None
-        elif exec_perms == self.ANY_EXEC:
-            self.exec_perms = exec_perms
-        elif type_is_str(exec_perms):
-            if deny:
-                if exec_perms != 'x':
-                    raise ComArmorException(_("topic deny rules only allow to use 'x' as execute mode, but not %s" % exec_perms))
-            else:
-                if exec_perms == 'x':
-                    raise ComArmorException(_("Execute flag ('x') in topic rule must specify the exec mode (ix, Px, Cx etc.)"))
-                elif exec_perms not in allow_exec_transitions and exec_perms not in allow_exec_fallback_transitions:
-                    raise ComArmorBug('Unknown execute mode specified in topic rule: %s' % exec_perms)
-            self.exec_perms = exec_perms
-        else:
-            raise ComArmorBug('Passed unknown perms object to TopicRule: %s' % str(perms))
-
-        if type(owner) is not bool:
-            raise ComArmorBug('non-boolean value passed to owner flag')
-        self.owner = owner
-
-        if type(topic_keyword) is not bool:
-            raise ComArmorBug('non-boolean value passed to topic keyword flag')
-        self.topic_keyword = topic_keyword
-
-        if type(leading_perms) is not bool:
-            raise ComArmorBug('non-boolean value passed to leading permissions flag')
-        self.leading_perms = leading_perms
-
-        # XXX subset
-
-        # check for invalid combinations (bare 'topic,' vs. path rule)
-        # if (self.all_paths and not self.all_perms) or (not self.all_paths and self.all_perms):
-        #   raise ComArmorBug('all_paths and all_perms must be equal')
-        # elif
-        if self.all_paths and (self.exec_perms or self.target):
-            raise ComArmorBug('exec perms or target specified for bare topic rule')
-
     @classmethod
     def _match(cls, raw_rule):
-        return RE_PROFILE_FILE_ENTRY.search(raw_rule)
+        return RE_PROFILE_TOPIC.search(raw_rule)
 
     @classmethod
     def _parse(cls, raw_rule):
@@ -137,37 +84,18 @@ class TopicRule(BaseRule):
 
         audit, deny, allow_keyword, comment = parse_modifiers(matches)
 
-        owner = bool(matches.group('owner'))
-
-        leading_perms = False
-
         if matches.group('path'):
             path = strip_quotes(matches.group('path'))
-        elif matches.group('path2'):
-            path = strip_quotes(matches.group('path2'))
-            leading_perms = True
         else:
-            path = TopicRule.ALL
+            raise ComArmorException(_("Invalid path in topic rule '%s'") % raw_rule)
 
         if matches.group('perms'):
             perms = matches.group('perms')
             perms, exec_perms = split_perms(perms, deny)
-        elif matches.group('perms2'):
-            perms = matches.group('perms2')
-            perms, exec_perms = split_perms(perms, deny)
-            leading_perms = True
         else:
-            perms = TopicRule.ALL
-            exec_perms = None
+            raise ComArmorException(_("Invalid perms in topic rule '%s'") % raw_rule)
 
-        if matches.group('target'):
-            target = strip_quotes(matches.group('target'))
-        else:
-            target = TopicRule.ALL
-
-        topic_keyword = bool(matches.group('topic_keyword'))
-
-        return TopicRule(path, perms, exec_perms, target, owner, topic_keyword, leading_perms,
+        return TopicRule(path, perms,
                            audit=audit, deny=deny, allow_keyword=allow_keyword, comment=comment)
 
     def get_clean(self, depth=0):
@@ -189,50 +117,25 @@ class TopicRule(BaseRule):
             if not perms:
                 raise ComArmorBug('Empty permissions in topic rule')
 
-        if self.leading_perms:
-            path_and_perms = '%s %s' % (perms, path)
-        else:
-            path_and_perms = '%s %s' % (path, perms)
+        path_and_perms = '%s %s' % (path, perms)
 
-        if self.all_targets:
-            target = ''
-        elif self.target:
-            target = ' -> %s' % quote_if_needed(self.target.regex)
-        else:
-            raise ComArmorBug('Empty exec target in topic rule')
+        topic_keyword = 'topic '
 
-        if self.owner:
-            owner = 'owner '
+        if not self.all_paths and not self.all_perms and path and perms:
+            return('%s%s%s%s,%s' % (space, self.modifiers_str(), topic_keyword, path_and_perms, self.comment))
         else:
-            owner = ''
-
-        if self.topic_keyword:
-            topic_keyword = 'topic '
-        else:
-            topic_keyword = ''
-
-        if self.all_paths and self.all_perms and not path and not perms and not target:
-            return('%s%s%stopic,%s' % (space, self.modifiers_str(), owner, self.comment))  # plain 'topic,' rule
-        elif not self.all_paths and not self.all_perms and path and perms:
-            return('%s%s%s%s%s%s,%s' % (space, self.modifiers_str(), topic_keyword, owner, path_and_perms, target, self.comment))
-        else:
-            raise ComArmorBug('Invalid combination of path and perms in topic rule - either specify path and perms, or none of them')
+            raise ComArmorBug('Invalid combination of path and perms in topic rule - specify path and perms')
 
     def _joint_perms(self):
-        '''return the permissions as string (using self.perms and self.exec_perms)'''
-        return self._join_given_perms(self.perms, self.exec_perms)
+        '''return the permissions as string (using self.perms)'''
+        return self._join_given_perms(self.perms) #TODO Remove?
 
-    def _join_given_perms(self, perms, exec_perms):
-        '''return the permissions as string (using the perms and exec_perms given as parameter)'''
+    def _join_given_perms(self, perms):
+        '''return the permissions as string (using the perms given as parameter)'''
         perm_string = ''
         for perm in topic_permissions:
             if perm in perms:
                 perm_string = perm_string + perm
-
-        if exec_perms == self.ANY_EXEC:
-            raise ComArmorBug("TopicRule.ANY_EXEC can't be used for actual rules")
-        if exec_perms:
-            perm_string = perm_string + exec_perms
 
         return perm_string
 
@@ -242,39 +145,8 @@ class TopicRule(BaseRule):
         if not self._is_covered_aare(self.path,         self.all_paths,         other_rule.path,        other_rule.all_paths,           'path'):
             return False
 
-        # TODO: check 'a' vs. 'w'
-        # perms can be empty if only exec_perms are specified, therefore disable the sanity check in _is_covered_list()...
-        if not self._is_covered_list(self.perms,        self.all_perms,         other_rule.perms,       other_rule.all_perms,           'perms', sanity_check=False):
+        if not self._is_covered_list(self.perms,        self.all_perms,         other_rule.perms,       other_rule.all_perms,           'perms'):
             return False
-
-        # ... and do our own sanity check
-        if not other_rule.perms and not other_rule.all_perms and not other_rule.exec_perms:
-            raise ComArmorBug('No permission or exec permission specified in other topic rule')
-
-        if not self.exec_perms and other_rule.exec_perms:
-            return False
-
-        # TODO: handle fallback modes?
-        if other_rule.exec_perms == self.ANY_EXEC and self.exec_perms:
-            pass  # other_rule has ANY_EXEC and self has an exec rule set -> covered, so avoid hitting the 'elif' branch
-        elif other_rule.exec_perms and self.exec_perms != other_rule.exec_perms:
-            return False
-
-        # check exec_mode and target only if other_rule contains exec_perms (except ANY_EXEC) or link permissions
-        # (for mrwk permissions, the target is ignored anyway)
-        if (other_rule.exec_perms and other_rule.exec_perms != self.ANY_EXEC) or (other_rule.perms and 'l' in other_rule.perms):
-            if not self._is_covered_aare(self.target,   self.all_targets,       other_rule.target,      other_rule.all_targets,         'target'):
-                return False
-
-            # a different target means running with a different profile, therefore we have to be more strict than _is_covered_aare()
-            # XXX should we enforce an exact match for a) exec and/or b) link target?
-            if self.all_targets != other_rule.all_targets:
-                return False
-
-        if self.owner and not other_rule.owner:
-            return False
-
-        # no check for topic_keyword and leading_perms - they are not relevant for is_covered()
 
         # still here? -> then it is covered
         return True
@@ -286,9 +158,6 @@ class TopicRule(BaseRule):
         if not type(rule_obj) == TopicRule:
             raise ComArmorBug('Passed non-topic rule: %s' % str(rule_obj))
 
-        if self.owner != rule_obj.owner:
-            return False
-
         if not self._is_equal_aare(self.path,           self.all_paths,         rule_obj.path,          rule_obj.all_paths,             'path'):
             return False
 
@@ -298,24 +167,11 @@ class TopicRule(BaseRule):
         if self.all_perms != rule_obj.all_perms:
             return False
 
-        if self.exec_perms != rule_obj.exec_perms:
-            return False
-
-        if not self._is_equal_aare(self.target,         self.all_targets,       rule_obj.target,        rule_obj.all_targets,           'target'):
-            return False
-
-        if strict:  # topic_keyword and leading_perms are only cosmetics, but still a difference
-            if self.topic_keyword != rule_obj.topic_keyword:
-                return False
-
-            if self.leading_perms != rule_obj.leading_perms:
-                return False
-
         return True
 
     def severity(self, sev_db):
         if self.all_paths:
-            severity = sev_db.rank_path('/**', 'mrwlkix')
+            severity = sev_db.rank_path('/**', 'spr')
         else:
             severity = -1
             sev = sev_db.rank_path(self.path.regex, self._joint_perms())
@@ -336,14 +192,9 @@ class TopicRule(BaseRule):
         old_mode = ''
         if self.original_perms:
             original_perms_all = self._join_given_perms(self.original_perms['allow']['all'], None)
-            original_perms_owner = self._join_given_perms(self.original_perms['allow']['owner'] - self.original_perms['allow']['all'], None)  # only list owner perms that are not covered by other perms
 
-            if original_perms_all and original_perms_owner:
-                old_mode = '%s + owner %s' % (original_perms_all, original_perms_owner)
-            elif original_perms_all:
+            if original_perms_all:
                 old_mode = original_perms_all
-            elif original_perms_owner:
-                old_mode = 'owner %s' % original_perms_owner
             else:
                 old_mode = ''
 
@@ -351,14 +202,8 @@ class TopicRule(BaseRule):
             headers += [_('Old Mode'), old_mode]
 
         perms = logprof_value_or_all(self.perms, self.all_perms)
-        if self.perms or self.exec_perms:
+        if self.perms:
             perms = self._joint_perms()
-
-        if self.owner:
-            perms = 'owner %s' % perms
-
-        if not self.all_targets:
-            perms = "%s -> %s" % (perms, self.target.regex)
 
         headers += [_('New Mode'), perms]
 
@@ -423,20 +268,18 @@ class TopicRuleset(BaseRuleset):
            path can be str or AARE
            If audit is True, only analyze rules with the audit flag set.
            If deny is True, only analyze matching deny rules
-           Returns {'allow': {'owner': set_of_perms, 'all': set_of_perms},
-                    'deny':  {'owner': set_of_perms, 'all': set_of_perms},
+           Returns {'allow': set_of_perms,
+                    'deny':  set_of_perms,
                     'path':  involved_paths}
-           Note: exec rules and exec/link target are not honored!
            '''
-           # XXX do we need to honor the link target?
 
         perms = {
-            'allow':    {'owner': set(), 'all': set() },
-            'deny':     {'owner': set(), 'all': set() },
+            'allow':    set(),
+            'deny':     set(),
         }
         all_perms = {
-            'allow':    {'owner': False, 'all': False },
-            'deny':     {'owner': False, 'all': False },
+            'allow':    False,
+            'deny':     False,
         }
         paths       = set()
 
@@ -447,60 +290,25 @@ class TopicRuleset(BaseRuleset):
             if rule.deny:
                 allow_or_deny = 'deny'
 
-            owner_or_all = 'all'
-            if rule.owner:
-                owner_or_all = 'owner'
-
             if rule.all_perms:
-                all_perms[allow_or_deny][owner_or_all] = True
+                all_perms[allow_or_deny] = True
             elif rule.perms:
-                perms[allow_or_deny][owner_or_all] = perms[allow_or_deny][owner_or_all].union(rule.perms)
+                perms[allow_or_deny] = perms[allow_or_deny].union(rule.perms)
                 paths.add(rule.path.regex)
 
-        allow = {}
-        deny = {}
-        for who in ['all', 'owner']:
-            if all_perms['allow'][who]:
-                allow[who] = TopicRule.ALL
-            else:
-                allow[who] = perms['allow'][who]
+        allow = None
+        deny = None
+        if all_perms['allow']:
+            allow = TopicRule.ALL
+        else:
+            allow = perms['allow']
 
-            if all_perms['deny'][who]:
-                deny[who] = TopicRule.ALL
-            else:
-                deny[who] = perms['deny'][who]
+        if all_perms['deny']:
+            deny = TopicRule.ALL
+        else:
+            deny = perms['deny']
 
         return {'allow': allow, 'deny': deny, 'paths': paths}
-
-    def get_exec_rules_for_path(self, path, only_exact_matches=True):
-        '''Get all rules matching the given path that contain exec permissions
-           path can be str or AARE'''
-
-        matches = TopicRuleset()
-
-        for rule in self.get_rules_for_path(path).rules:
-            if rule.exec_perms:
-                if rule.path.is_equal(path):
-                    matches.add(rule)
-                elif not only_exact_matches:
-                    matches.add(rule)
-
-        return matches
-
-    def get_exec_conflict_rules(self, oldrule):
-        '''check if one of the exec rules conflict with oldrule. If yes, return the conflicting rules.'''
-
-        conflictingrules = TopicRuleset()
-
-        if oldrule.exec_perms:
-            execrules = self.get_exec_rules_for_path(oldrule.path)
-
-            for mergerule in execrules.rules:
-                if mergerule.exec_perms != oldrule.exec_perms or mergerule.target != oldrule.target:
-                    conflictingrules.add(mergerule)
-
-        return conflictingrules
-
 
 
 def split_perms(perm_string, deny):
@@ -515,21 +323,6 @@ def split_perms(perm_string, deny):
         if perm_string[0] in topic_permissions:
             perms.add(perm_string[0])
             perm_string = perm_string[1:]
-        elif perm_string[0] == 'x':
-            if not deny:
-                raise ComArmorException(_("'x' must be preceded by an exec qualifier (i, P, C or U)"))
-            exec_mode = 'x'
-            perm_string = perm_string[1:]
-        elif perm_string.startswith(allow_exec_transitions):
-            if exec_mode and exec_mode != perm_string[0:2]:
-                raise ComArmorException(_('conflicting execute permissions found: %s and %s' % (exec_mode, perm_string[0:2])))
-            exec_mode = perm_string[0:2]
-            perm_string = perm_string[2:]
-        elif perm_string.startswith(allow_exec_fallback_transitions):
-            if exec_mode and exec_mode != perm_string[0:3]:
-                raise ComArmorException(_('conflicting execute permissions found: %s and %s' % (exec_mode, perm_string[0:3])))
-            exec_mode = perm_string[0:3]
-            perm_string = perm_string[3:]
         else:
             raise ComArmorException(_('permission contains unknown character(s) %s' % perm_string))
 
