@@ -102,6 +102,9 @@ class TopicRule(BaseRule):
         if matches.group('perms'):
             perms = matches.group('perms')
             perms, exec_perms = split_perms(perms, deny)
+        elif matches.group('bare_perm'):
+            perms = matches.group('bare_perm')
+            perms, exec_perms = split_perms(perms, deny)
         else:
             perms = TopicRule.ALL
 
