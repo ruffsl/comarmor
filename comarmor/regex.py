@@ -19,13 +19,7 @@ RE_PROFILE_TOPIC = re.compile(
     '|' + # or
         '(' +
             'topic\s+' +
-            '(' +
-                '(' +
-                    RE_PROFILE_PATH_OR_VAR % 'path' + '\s+' + RE_TOPIC_PERMS % 'perms' +  # path and perms
-                ')' +
-            '|' + # or
-                RE_TOPIC_PERMS % 'bare_perm' +  # path and perms
-            ')' +
+            RE_PROFILE_PATH_OR_VAR % 'path' + '\s+' + RE_TOPIC_PERMS % 'perms' +  # path and perms
         ')' +
     ')' +
     RE_COMMA_EOL)
