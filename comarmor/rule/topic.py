@@ -39,7 +39,7 @@ class TopicRule(BaseRule):
     rule_name = 'topic'
 
     def __init__(self, path, perms,
-                audit=False, deny=False, allow_keyword=False, comment='', log_event=None):
+                 audit=False, deny=False, allow_keyword=False, comment='', log_event=None):
         '''Initialize TopicRule
 
            Parameters:
@@ -48,10 +48,10 @@ class TopicRule(BaseRule):
         '''
 
         super(TopicRule, self).__init__(audit=audit, deny=deny, allow_keyword=allow_keyword,
-                                             comment=comment, log_event=log_event)
+                                        comment=comment, log_event=log_event)
 
-        #                                                               rulepart        partperms       is_path log_event
-        self.path,          self.all_paths          = self._aare_or_all(path,           'path',         True,   log_event)
+        #                                             rulepart, partperms, is_path, log_event
+        self.path, self.all_paths = self._aare_or_all(path, 'path', True, log_event)
 
         self.can_glob = not self.all_paths
         self.can_glob_ext = not self.all_paths
@@ -64,9 +64,11 @@ class TopicRule(BaseRule):
         elif perms == None:
             perms = set()
 
-        self.perms, self.all_perms, unknown_items = check_and_split_list(perms, topic_permissions, TopicRule.ALL, 'TopicRule', 'permissions', allow_empty_list=True)
+        self.perms, self.all_perms, unknown_items = check_and_split_list(
+            perms, topic_permissions, TopicRule.ALL, 'TopicRule', 'permissions', allow_empty_list=True)
         if unknown_items:
-            raise ComArmorBug('Passed unknown perms to TopicRule: %s' % str(unknown_items))
+            raise ComArmorBug(
+                'Passed unknown perms to TopicRule: %s' % str(unknown_items))
 
         self.original_perms = None  # might be set by aa-logprof / aa.py propose_topic_rules()
 
@@ -87,16 +89,18 @@ class TopicRule(BaseRule):
         if matches.group('path'):
             path = strip_quotes(matches.group('path'))
         else:
-            raise ComArmorException(_("Invalid path in topic rule '%s'") % raw_rule)
+            raise ComArmorException(
+                _("Invalid path in topic rule '%s'") % raw_rule)
 
         if matches.group('perms'):
             perms = matches.group('perms')
             perms, exec_perms = split_perms(perms, deny)
         else:
-            raise ComArmorException(_("Invalid perms in topic rule '%s'") % raw_rule)
+            raise ComArmorException(
+                _("Invalid perms in topic rule '%s'") % raw_rule)
 
         return TopicRule(path, perms,
-                           audit=audit, deny=deny, allow_keyword=allow_keyword, comment=comment)
+                         audit=audit, deny=deny, allow_keyword=allow_keyword, comment=comment)
 
     def get_clean(self, depth=0):
         '''return rule (in clean/default formatting)'''
@@ -124,11 +128,12 @@ class TopicRule(BaseRule):
         if not self.all_paths and not self.all_perms and path and perms:
             return('%s%s%s%s,%s' % (space, self.modifiers_str(), topic_keyword, path_and_perms, self.comment))
         else:
-            raise ComArmorBug('Invalid combination of path and perms in topic rule - specify path and perms')
+            raise ComArmorBug(
+                'Invalid combination of path and perms in topic rule - specify path and perms')
 
     def _joint_perms(self):
         '''return the permissions as string (using self.perms)'''
-        return self._join_given_perms(self.perms) #TODO Remove?
+        return self._join_given_perms(self.perms)  # TODO Remove?
 
     def _join_given_perms(self, perms):
         '''return the permissions as string (using the perms given as parameter)'''
@@ -150,7 +155,6 @@ class TopicRule(BaseRule):
 
         # still here? -> then it is covered
         return True
-
 
     def is_equal_localvars(self, rule_obj, strict):
         '''compare if rule-specific variables are equal'''
@@ -191,7 +195,8 @@ class TopicRule(BaseRule):
 
         old_mode = ''
         if self.original_perms:
-            original_perms_all = self._join_given_perms(self.original_perms['allow']['all'], None)
+            original_perms_all = self._join_given_perms(
+                self.original_perms['allow']['all'], None)
 
             if original_perms_all:
                 old_mode = original_perms_all
@@ -213,7 +218,7 @@ class TopicRule(BaseRule):
     def glob(self):
         '''Change path to next possible glob'''
         if self.all_paths:
-           return
+            return
 
         self.path = self.path.glob_path()
         self.raw_rule = None
@@ -221,7 +226,7 @@ class TopicRule(BaseRule):
     def glob_ext(self):
         '''Change path to next possible glob with extension'''
         if self.all_paths:
-           return
+            return
 
         self.path = self.path.glob_path_withext()
         self.raw_rule = None
@@ -236,14 +241,16 @@ class TopicRule(BaseRule):
         if self.all_paths:
             raise ComArmorBug('Attemp to edit bare topic rule')
 
-        newpath = AARE(newpath, True)  # might raise ComArmorException if the new path doesn't start with / or a variable
+        # might raise ComArmorException if the new path doesn't start with / or a variable
+        newpath = AARE(newpath, True)
         return newpath.match(self.path)
 
     def store_edit(self, newpath):
         if self.all_paths:
             raise ComArmorBug('Attemp to edit bare topic rule')
 
-        self.path = AARE(newpath, True)  # might raise ComArmorException if the new path doesn't start with / or a variable
+        # might raise ComArmorException if the new path doesn't start with / or a variable
+        self.path = AARE(newpath, True)
         self.raw_rule = None
 
 
@@ -281,7 +288,7 @@ class TopicRuleset(BaseRuleset):
             'allow':    False,
             'deny':     False,
         }
-        paths       = set()
+        paths = set()
 
         matching_rules = self.get_rules_for_path(path, audit, deny)
 
@@ -324,6 +331,7 @@ def split_perms(perm_string, deny):
             perms.add(perm_string[0])
             perm_string = perm_string[1:]
         else:
-            raise ComArmorException(_('permission contains unknown character(s) %s' % perm_string))
+            raise ComArmorException(
+                _('permission contains unknown character(s) %s' % perm_string))
 
     return perms, exec_mode
