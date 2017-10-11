@@ -97,13 +97,15 @@ class TopicRule(BaseRule):
         if matches.group('path'):
             path = strip_quotes(matches.group('path'))
         else:
-            path = TopicRule.ALL
+            raise ComArmorException(
+                _("Invalid path in topic rule '%s'") % raw_rule)
 
         if matches.group('perms'):
             perms = matches.group('perms')
             perms, exec_perms = split_perms(perms, deny)
         else:
-            perms = TopicRule.ALL
+            raise ComArmorException(
+                _("Invalid perms in topic rule '%s'") % raw_rule)
 
         return TopicRule(path, perms,
                          audit=audit, deny=deny, allow_keyword=allow_keyword, comment=comment)

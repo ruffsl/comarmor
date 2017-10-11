@@ -15,11 +15,7 @@ RE_TOPIC_PERMS = '(?P<%s>[spr]+)'
 RE_PROFILE_TOPIC = re.compile(
     RE_AUDIT_DENY +
     '(' +
-        '(?P<bare_topic>topic)' +  # bare 'file,'
-    '|' + # or
-        '(' +
-            'topic\s+' +
-            RE_PROFILE_PATH_OR_VAR % 'path' + '\s+' + RE_TOPIC_PERMS % 'perms' +  # path and perms
-        ')' +
+        'topic\s+' +
+        RE_PROFILE_PATH_OR_VAR % 'path' + '\s+' + RE_TOPIC_PERMS % 'perms' +  # path and perms
     ')' +
     RE_COMMA_EOL)
