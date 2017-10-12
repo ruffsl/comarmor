@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 # ----------------------------------------------------------------------
 #    Copyright (C) 2015 Christian Boltz <apparmor@cboltz.de>
+#    Copyright (C) 2017 Ruffin White <roxfoxpox@gmail.com>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -88,7 +89,7 @@ class TopicTestNonMatch(CATest):
     def _run_test(self, rawrule, expected):
         self.assertFalse(TopicRule.match(rawrule))
 
-# class FileTestParseFromLog(FileTest):
+# class TopicTestParseFromLog(TopicTest):
 #     def test_file_from_log(self):
 #         parser = ReadLog('', '', '', '')
 #         event = 'Nov 11 07:33:07 myhost kernel: [50812.879558] type=1502 audit(1236774787.169:369): operation="inode_permission" requested_mask="::r" denied_mask="::r" fsuid=1000 name="/bin/dash" pid=13726 profile="/bin/foobar"'
@@ -118,9 +119,9 @@ class TopicTestNonMatch(CATest):
 #             'sock_type': None,
 #         })
 #
-#         #FileRule#     path,                 perms,                         exec_perms, target,         owner,  file_keyword,   leading_perms
-#         #obj = FileRule(parsed_event['name'], parsed_event['denied_mask'],   None,       FileRule.ALL,   False,  False,          False,         )
-#         obj = FileRule(parsed_event['name'], 'r',                           None,       FileRule.ALL,   False,  False,          False,         )
+#         #TopicRule#     path,                 perms,                         exec_perms, target,         owner,  file_keyword,   leading_perms
+#         #obj = TopicRule(parsed_event['name'], parsed_event['denied_mask'],   None,       TopicRule.ALL,   False,  False,          False,         )
+#         obj = TopicRule(parsed_event['name'], 'r',                           None,       FileRule.ALL,   False,  False,          False,         )
 #         # XXX handle things like '::r'
 #         # XXX split off exec perms?
 #
@@ -513,32 +514,32 @@ class TopicLogprofHeaderTest(CATest):
         obj.original_perms = {'allow': set()}
         self.assertEqual(obj.logprof_header(), [_('Path'), '/foo', _('New Mode'), _('pr')])
 
-class FileEditHeaderTest(AATest):
+class TopicEditHeaderTest(CATest):
     def _run_test(self, params, expected):
-        rule_obj = FileRule.parse(params)
+        rule_obj = TopicRule.parse(params)
         self.assertEqual(rule_obj.can_edit, True)
         prompt, path_to_edit = rule_obj.edit_header()
         self.assertEqual(path_to_edit, expected)
 
     tests = [
-        ('/foo/bar/baz r,',         '/foo/bar/baz'),
-        ('/foo/**/baz r,',          '/foo/**/baz'),
+        ('topic /foo/bar/baz r,',         '/foo/bar/baz'),
+        ('topic /foo/**/baz r,',          '/foo/**/baz'),
     ]
 
-    def test_edit_header_bare_file(self):
-        rule_obj = FileRule.parse('file,')
-        self.assertEqual(rule_obj.can_edit, False)
-        with self.assertRaises(AppArmorBug):
-            rule_obj.edit_header()
+    # def test_edit_header_bare_topic(self):
+    #     rule_obj = TopicRule.parse('topic,')
+    #     self.assertEqual(rule_obj.can_edit, False)
+    #     with self.assertRaises(ComArmorBug):
+    #         rule_obj.edit_header()
 
-class FileValidateAndStoreEditTest(AATest):
+class TopicValidateAndStoreEditTest(CATest):
     def _run_test(self, params, expected):
-        rule_obj = FileRule('/foo/bar/baz', 'r', None, FileRule.ALL, False, False, False, log_event=True)
+        rule_obj = TopicRule('/foo/bar/baz', 'r', False, log_event=True)
 
         self.assertEqual(rule_obj.validate_edit(params), expected)
 
         rule_obj.store_edit(params)
-        self.assertEqual(rule_obj.get_raw(), '%s r,' % params)
+        self.assertEqual(rule_obj.get_raw(), 'topic %s r,' % params)
 
     tests = [
         # edited path           match
@@ -550,7 +551,7 @@ class FileValidateAndStoreEditTest(AATest):
     ]
 
     def test_validate_not_a_path(self):
-        rule_obj = FileRule.parse('/foo/bar/baz r,')
+        rule_obj = TopicRule.parse('topic /foo/bar/baz r,')
 
         with self.assertRaises(AppArmorException):
             rule_obj.validate_edit('foo/bar/baz')
@@ -558,306 +559,195 @@ class FileValidateAndStoreEditTest(AATest):
         with self.assertRaises(AppArmorException):
             rule_obj.store_edit('foo/bar/baz')
 
-    def test_validate_edit_bare_file(self):
-        rule_obj = FileRule.parse('file,')
-        self.assertEqual(rule_obj.can_edit, False)
+    # def test_validate_edit_bare_topic(self):
+    #     rule_obj = TopicRule.parse('topic,')
+    #     self.assertEqual(rule_obj.can_edit, False)
+    #
+    #     with self.assertRaises(AppArmorBug):
+    #         rule_obj.validate_edit('/foo/bar')
+    #
+    #     with self.assertRaises(AppArmorBug):
+    #         rule_obj.store_edit('/foo/bar')
 
-        with self.assertRaises(AppArmorBug):
-            rule_obj.validate_edit('/foo/bar')
-
-        with self.assertRaises(AppArmorBug):
-            rule_obj.store_edit('/foo/bar')
 
 
+## --- tests for TopicRuleset --- #
 
-## --- tests for FileRuleset --- #
-
-class FileRulesTest(AATest):
+class TopicRulesTest(CATest):
     def test_empty_ruleset(self):
-        ruleset = FileRuleset()
-        ruleset_2 = FileRuleset()
+        ruleset = TopicRuleset()
+        ruleset_2 = TopicRuleset()
         self.assertEqual([], ruleset.get_raw(2))
         self.assertEqual([], ruleset.get_clean(2))
         self.assertEqual([], ruleset_2.get_raw(2))
         self.assertEqual([], ruleset_2.get_clean(2))
 
     def test_ruleset_1(self):
-        ruleset = FileRuleset()
+        ruleset = TopicRuleset()
         rules = [
-            '         file             ,        ',
-            '   file /foo rw,',
-            '  file /bar r,',
+            '   topic /foo rp,',
+            '  topic /bar r,',
         ]
 
         expected_raw = [
-            'file             ,',
-            'file /foo rw,',
-            'file /bar r,',
+            'topic /foo rp,',
+            'topic /bar r,',
             '',
         ]
 
         expected_clean = [
-            'file /bar r,',
-            'file /foo rw,',
-            'file,',
+            'topic /bar r,',
+            'topic /foo pr,',
             '',
         ]
 
         deleted = 0
         for rule in rules:
-            deleted += ruleset.add(FileRule.parse(rule))
+            deleted += ruleset.add(TopicRule.parse(rule))
 
         self.assertEqual(deleted, 0)
         self.assertEqual(expected_raw, ruleset.get_raw())
         self.assertEqual(expected_clean, ruleset.get_clean())
 
-    def test_ruleset_2(self):
-        ruleset = FileRuleset()
-        rules = [
-            '/foo Px,',
-            '/bar    Cx    ->     bar_child ,',
-            'deny /asdf w,',
-        ]
-
-        expected_raw = [
-            '  /foo Px,',
-            '  /bar    Cx    ->     bar_child ,',
-            '  deny /asdf w,',
-             '',
-        ]
-
-        expected_clean = [
-            '  deny /asdf w,',
-            '',
-            '  /bar Cx -> bar_child,',
-            '  /foo Px,',
-             '',
-        ]
-
-        deleted = 0
-        for rule in rules:
-            deleted += ruleset.add(FileRule.parse(rule))
-
-        self.assertEqual(deleted, 0)
-        self.assertEqual(expected_raw, ruleset.get_raw(1))
-        self.assertEqual(expected_clean, ruleset.get_clean(1))
-
     def test_ruleset_cleanup_add_1(self):
-        ruleset = FileRuleset()
+        ruleset = TopicRuleset()
         rules = [
-            '/foo/bar r,',
-            '/foo/baz rw,',
-            '/foo/baz rwk,',
+            'topic /foo/bar r,',
+            'topic /foo/baz rp,',
+            'topic /foo/baz rps,',
         ]
 
         rules_with_cleanup = [
-            '/foo/* r,',
+            'topic /foo/* r,',
         ]
 
         expected_raw = [
-            '  /foo/baz rw,',
-            '  /foo/baz rwk,',
-            '  /foo/* r,',
+            '  topic /foo/baz rp,',
+            '  topic /foo/baz rps,',
+            '  topic /foo/* r,',
              '',
         ]
 
         expected_clean = [
-            '  /foo/* r,',
-            '  /foo/baz rw,',
-            '  /foo/baz rwk,',
+            '  topic /foo/* r,',
+            '  topic /foo/baz pr,',
+            '  topic /foo/baz psr,',
              '',
         ]
 
         deleted = 0
         for rule in rules:
-            deleted += ruleset.add(FileRule.parse(rule))
+            deleted += ruleset.add(TopicRule.parse(rule))
 
-        self.assertEqual(deleted, 0)  # rules[] are added without cleanup mode, so the superfluous '/foo/baz rw,' should be kept
+        self.assertEqual(deleted, 0)  # rules[] are added without cleanup mode, so the superfluous '/foo/baz rp,' should be kept
 
         for rule in rules_with_cleanup:
-            deleted += ruleset.add(FileRule.parse(rule), cleanup=True)
+            deleted += ruleset.add(TopicRule.parse(rule), cleanup=True)
 
-        self.assertEqual(deleted, 1)  # rules_with_cleanup made '/foo/bar r,' superfluous
+        self.assertEqual(deleted, 1)  # rules_with_cleanup made 'topic /foo/bar r,' superfluous
         self.assertEqual(expected_raw, ruleset.get_raw(1))
         self.assertEqual(expected_clean, ruleset.get_clean(1))
 
 
-#class FileDeleteTest(AATest):
+#class TopicDeleteTest(CATest):
 #    pass
 
-class FileGetRulesForPath(AATest):
+class TopicGetRulesForPath(CATest):
     tests = [
         #  path                                 audit   deny    expected
-        (('/etc/foo/dovecot.conf',              False,  False), ['/etc/foo/* r,', '/etc/foo/dovecot.conf rw,',                                  '']),
-        (('/etc/foo/foo.conf',                  False,  False), ['/etc/foo/* r,',                                                               '']),
-        (('/etc/foo/dovecot-database.conf.ext', False,  False), ['/etc/foo/* r,', '/etc/foo/dovecot-database.conf.ext w,',                      '']),
-        (('/etc/foo/auth.d/authfoo.conf',       False,  False), ['/etc/foo/{auth,conf}.d/*.conf r,','/etc/foo/{auth,conf}.d/authfoo.conf w,',   '']),
-        (('/etc/foo/dovecot-deny.conf',         False,  False), ['deny /etc/foo/dovecot-deny.conf r,', '', '/etc/foo/* r,',                     '']),
-        (('/foo/bar',                           False,  True ), [                                                                                 ]),
-        (('/etc/foo/dovecot-deny.conf',         False,  True ), ['deny /etc/foo/dovecot-deny.conf r,',                                          '']),
-        (('/etc/foo/foo.conf',                  False,  True ), [                                                                                 ]),
-        (('/etc/foo/owner.conf',                False,  False), ['/etc/foo/* r,', 'owner /etc/foo/owner.conf w,',                               '']),
+        (('/etc/foo/dovecot.conf',              False,  False), ['topic /etc/foo/* r,', 'topic /etc/foo/dovecot.conf pr,',                                  '']),
+        (('/etc/foo/foo.conf',                  False,  False), ['topic /etc/foo/* r,',                                                                     '']),
+        (('/etc/foo/dovecot-database.conf.ext', False,  False), ['topic /etc/foo/* r,', 'topic /etc/foo/dovecot-database.conf.ext p,',                      '']),
+        (('/etc/foo/auth.d/authfoo.conf',       False,  False), ['topic /etc/foo/{auth,conf}.d/*.conf r,','topic /etc/foo/{auth,conf}.d/authfoo.conf p,',   '']),
+        (('/etc/foo/dovecot-deny.conf',         False,  False), ['deny topic /etc/foo/dovecot-deny.conf r,', '', 'topic /etc/foo/* r,',                     '']),
+        (('/foo/bar',                           False,  True ), [                                                                                             ]),
+        (('/etc/foo/dovecot-deny.conf',         False,  True ), ['deny topic /etc/foo/dovecot-deny.conf r,',                                                '']),
+        (('/etc/foo/foo.conf',                  False,  True ), [                                                                                             ]),
     ]
 
     def _run_test(self, params, expected):
         rules = [
-            '/etc/foo/* r,',
-            '/etc/foo/dovecot.conf rw,',
-            '/etc/foo/{auth,conf}.d/*.conf r,',
-            '/etc/foo/{auth,conf}.d/authfoo.conf w,',
-            '/etc/foo/dovecot-database.conf.ext w,',
-            'owner /etc/foo/owner.conf w,',
-            'deny /etc/foo/dovecot-deny.conf r,',
+            'topic /etc/foo/* r,',
+            'topic /etc/foo/dovecot.conf rp,',
+            'topic /etc/foo/{auth,conf}.d/*.conf r,',
+            'topic /etc/foo/{auth,conf}.d/authfoo.conf p,',
+            'topic /etc/foo/dovecot-database.conf.ext p,',
+            'deny topic /etc/foo/dovecot-deny.conf r,',
         ]
 
-        ruleset = FileRuleset()
+        ruleset = TopicRuleset()
         for rule in rules:
-            ruleset.add(FileRule.parse(rule))
+            ruleset.add(TopicRule.parse(rule))
 
         matching = ruleset.get_rules_for_path(params[0], params[1], params[2])
         self. assertEqual(matching.get_clean(), expected)
 
 
-class FileGetPermsForPath_1(AATest):
+class TopicGetPermsForPath_1(CATest):
     tests = [
         #  path                                 audit   deny    expected
-        (('/etc/foo/dovecot.conf',              False,  False), {'allow': {'all': {'r', 'w'},    'owner': set()  },  'deny': {'all': set(),          'owner': set()   }, 'paths': {'/etc/foo/*', '/etc/foo/dovecot.conf'                                    }   }),
-        (('/etc/foo/foo.conf',                  False,  False), {'allow': {'all': {'r'     },    'owner': set()  },  'deny': {'all': set(),          'owner': set()   }, 'paths': {'/etc/foo/*'                                                             }   }),
-        (('/etc/foo/dovecot-database.conf.ext', False,  False), {'allow': {'all': {'r', 'w'},    'owner': set()  },  'deny': {'all': set(),          'owner': set()   }, 'paths': {'/etc/foo/*', '/etc/foo/dovecot-database.conf.ext'                       }   }),
-        (('/etc/foo/auth.d/authfoo.conf',       False,  False), {'allow': {'all': {'r', 'w'},    'owner': set()  },  'deny': {'all': set(),          'owner': set()   }, 'paths': {'/etc/foo/{auth,conf}.d/*.conf', '/etc/foo/{auth,conf}.d/authfoo.conf'   }   }),
-        (('/etc/foo/dovecot-deny.conf',         False,  False), {'allow': {'all': {'r'     },    'owner': set()  },  'deny': {'all': {'r'     },     'owner': set()   }, 'paths': {'/etc/foo/*', '/etc/foo/dovecot-deny.conf'                               }   }),
-        (('/foo/bar',                           False,  True ), {'allow': {'all': set(),         'owner': set()  },  'deny': {'all': set(),          'owner': set()   }, 'paths': set()                                                                         }),
-        (('/etc/foo/dovecot-deny.conf',         False,  True ), {'allow': {'all': set(),         'owner': set()  },  'deny': {'all': {'r'     },     'owner': set()   }, 'paths': {'/etc/foo/dovecot-deny.conf'                                             }   }),
-        (('/etc/foo/foo.conf',                  False,  True ), {'allow': {'all': set(),         'owner': set()  },  'deny': {'all': set(),          'owner': set()   }, 'paths': set()                                                                         }),
-        (('/usr/lib/dovecot/config',            False,  False), {'allow': {'all': set(),         'owner': set()  },  'deny': {'all': set(),          'owner': set()   }, 'paths': set()                     }),  # exec perms are not honored by get_perms_for_path()
+        (('/etc/foo/dovecot.conf',              False,  False), {'allow': {'r', 'p'},  'deny': set(),   'paths': {'/etc/foo/*', '/etc/foo/dovecot.conf'                                    }   }),
+        (('/etc/foo/foo.conf',                  False,  False), {'allow': {'r'     },  'deny': set(),   'paths': {'/etc/foo/*'                                                             }   }),
+        (('/etc/foo/dovecot-database.conf.ext', False,  False), {'allow': {'r', 'p'},  'deny': set(),   'paths': {'/etc/foo/*', '/etc/foo/dovecot-database.conf.ext'                       }   }),
+        (('/etc/foo/auth.d/authfoo.conf',       False,  False), {'allow': {'r', 'p'},  'deny': set(),   'paths': {'/etc/foo/{auth,conf}.d/*.conf', '/etc/foo/{auth,conf}.d/authfoo.conf'   }   }),
+        (('/etc/foo/dovecot-deny.conf',         False,  False), {'allow': {'r'     },  'deny': {'r'},   'paths': {'/etc/foo/*', '/etc/foo/dovecot-deny.conf'                               }   }),
+        (('/foo/bar',                           False,  True ), {'allow': set()     ,  'deny': set(),   'paths': set()                                                                         }),
+        (('/etc/foo/dovecot-deny.conf',         False,  True ), {'allow': set()     ,  'deny': {'r'},   'paths': {'/etc/foo/dovecot-deny.conf'                                             }   }),
+        (('/etc/foo/foo.conf',                  False,  True ), {'allow': set()     ,  'deny': set(),   'paths': set()                                                                         }),
+        (('/usr/lib/dovecot/config',            False,  False), {'allow': {'s'}     ,  'deny': set(),   'paths': {'/usr/lib/dovecot/config'}                                                   }),
     ]
 
     def _run_test(self, params, expected):
         rules = [
-            '/etc/foo/* r,',
-            '/etc/foo/dovecot.conf rw,',
-            '/etc/foo/{auth,conf}.d/*.conf r,',
-            '/etc/foo/{auth,conf}.d/authfoo.conf w,',
-            '/etc/foo/dovecot-database.conf.ext w,',
-            'deny /etc/foo/dovecot-deny.conf r,',
-            '/usr/lib/dovecot/config ix,',
+            'topic /etc/foo/* r,',
+            'topic /etc/foo/dovecot.conf rp,',
+            'topic /etc/foo/{auth,conf}.d/*.conf r,',
+            'topic /etc/foo/{auth,conf}.d/authfoo.conf p,',
+            'topic /etc/foo/dovecot-database.conf.ext p,',
+            'deny topic /etc/foo/dovecot-deny.conf r,',
+            'topic /usr/lib/dovecot/config s,',
         ]
 
-        ruleset = FileRuleset()
+        ruleset = TopicRuleset()
         for rule in rules:
-            ruleset.add(FileRule.parse(rule))
+            ruleset.add(TopicRule.parse(rule))
 
         perms = ruleset.get_perms_for_path(params[0], params[1], params[2])
         self. assertEqual(perms, expected)
 
-class FileGetPermsForPath_2(AATest):
-    tests = [
-        #  path                                 audit   deny    expected
-        (('/etc/foo/dovecot.conf',              False,  False), {'allow': {'all': FileRule.ALL, 'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': {'/etc/foo/*', '/etc/foo/dovecot.conf'                                     }    }),
-        (('/etc/foo/dovecot.conf',              True,   False), {'allow': {'all': {'r', 'w'},   'owner': set()  },  'deny': {'all': set(),          'owner': set()  }, 'paths': {'/etc/foo/dovecot.conf'                                                   }    }),
-        (('/etc/foo/foo.conf',                  False,  False), {'allow': {'all': FileRule.ALL, 'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': {'/etc/foo/*'                                                              }    }),
-        (('/etc/foo/dovecot-database.conf.ext', False,  False), {'allow': {'all': FileRule.ALL, 'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': {'/etc/foo/*', '/etc/foo/dovecot-database.conf.ext'                        }    }),
-        (('/etc/foo/auth.d/authfoo.conf',       False,  False), {'allow': {'all': FileRule.ALL, 'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': {'/etc/foo/{auth,conf}.d/*.conf', '/etc/foo/{auth,conf}.d/authfoo.conf'    }    }),
-        (('/etc/foo/auth.d/authfoo.conf',       True,   False), {'allow': {'all': {'w'     },   'owner': set()  },  'deny': {'all': set(),          'owner': set()  }, 'paths': {'/etc/foo/{auth,conf}.d/authfoo.conf'                                     }    }),
-        (('/etc/foo/dovecot-deny.conf',         False,  False), {'allow': {'all': FileRule.ALL, 'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': {'/etc/foo/*', '/etc/foo/dovecot-deny.conf'                                }    }),
-        (('/foo/bar',                           False,  True ), {'allow': {'all': set(),        'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': set()                                                                           }),
-        (('/etc/foo/dovecot-deny.conf',         False,  True ), {'allow': {'all': set(),        'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': {'/etc/foo/dovecot-deny.conf'                                              }    }),
-        (('/etc/foo/foo.conf',                  False,  True ), {'allow': {'all': set(),        'owner': set()  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': set()                                                                           }),
-    #   (('/etc/foo/owner.conf',                False,  True ), {'allow': {'all': set(),        'owner': {'w'}  },  'deny': {'all': FileRule.ALL,   'owner': set()  }, 'paths': {'/etc/foo/owner.conf'                                                     }    }), # XXX doen't work yet
-    ]
-
-    def _run_test(self, params, expected):
-        rules = [
-            '/etc/foo/* r,',
-            'audit /etc/foo/dovecot.conf rw,',
-            '/etc/foo/{auth,conf}.d/*.conf r,',
-            'audit /etc/foo/{auth,conf}.d/authfoo.conf w,',
-            '/etc/foo/dovecot-database.conf.ext w,',
-            'deny /etc/foo/dovecot-deny.conf r,',
-            'file,',
-            'owner /etc/foo/owner.conf w,',
-            'deny file,',
-        ]
-
-        ruleset = FileRuleset()
-        for rule in rules:
-            ruleset.add(FileRule.parse(rule))
-
-        perms = ruleset.get_perms_for_path(params[0], params[1], params[2])
-        self. assertEqual(perms, expected)
-
-class FileGetExecRulesForPath_1(AATest):
-    tests = [
-        ('/bin/foo',    ['audit /bin/foo ix,', '']                      ),
-        ('/bin/bar',    ['deny /bin/bar x,', '']                        ),
-        ('/foo',        []                                              ),
-    ]
-
-    def _run_test(self, params, expected):
-        rules = [
-            '/foo r,',
-            'audit /bin/foo ix,',
-            '/bin/b* Px,',
-            'deny /bin/bar x,',
-        ]
-
-        ruleset = FileRuleset()
-        for rule in rules:
-            ruleset.add(FileRule.parse(rule))
-
-        perms = ruleset.get_exec_rules_for_path(params)
-        matches = perms.get_clean()
-        self. assertEqual(matches, expected)
-
-class FileGetExecRulesForPath_2(AATest):
-    tests = [
-        ('/bin/foo',    ['audit /bin/foo ix,', '']                      ),
-        ('/bin/bar',    ['deny /bin/bar x,', '', '/bin/b* Px,', '']     ),
-        ('/foo',        []                                              ),
-    ]
-
-    def _run_test(self, params, expected):
-        rules = [
-            '/foo r,',
-            'audit /bin/foo ix,',
-            '/bin/b* Px,',
-            'deny /bin/bar x,',
-        ]
-
-        ruleset = FileRuleset()
-        for rule in rules:
-            ruleset.add(FileRule.parse(rule))
-
-        perms = ruleset.get_exec_rules_for_path(params, only_exact_matches=False)
-        matches = perms.get_clean()
-        self. assertEqual(matches, expected)
-
-class FileGetExecConflictRules_1(AATest):
-    tests = [
-        ('/bin/foo ix,',    ['/bin/foo Px,', '']                            ),
-        ('/bin/bar Px,',    ['deny /bin/bar x,', '', '/bin/bar cx,', '']    ),
-        ('/bin/bar cx,',    ['deny /bin/bar x,','',]                        ),
-        ('/bin/foo r,',     []                                              ),
-    ]
-
-    def _run_test(self, params, expected):
-        rules = [
-            '/foo r,',
-            'audit /bin/foo ix,',
-            '/bin/foo Px,',
-            '/bin/b* Px,',
-            '/bin/bar cx,',
-            'deny /bin/bar x,',
-        ]
-
-        ruleset = FileRuleset()
-        for rule in rules:
-            ruleset.add(FileRule.parse(rule))
-
-        rule_obj = FileRule.parse(params)
-        conflicts = ruleset.get_exec_conflict_rules(rule_obj)
-        self. assertEqual(conflicts.get_clean(), expected)
-
+# class TopicGetPermsForPath_2(CATest):  # testing bare rules
+#     tests = [
+#         #  path                                 audit   deny    expected
+#         (('/etc/foo/dovecot.conf',              False,  False), {'allow': TopicRule.ALL,  'deny': TopicRule.ALL, 'paths': {'/etc/foo/*', '/etc/foo/dovecot.conf'                                     }    }),
+#         (('/etc/foo/dovecot.conf',              True,   False), {'allow': {'r', 'p'}   ,  'deny': set()        , 'paths': {'/etc/foo/dovecot.conf'                                                   }    }),
+#         (('/etc/foo/foo.conf',                  False,  False), {'allow': TopicRule.ALL,  'deny': TopicRule.ALL, 'paths': {'/etc/foo/*'                                                              }    }),
+#         (('/etc/foo/dovecot-database.conf.ext', False,  False), {'allow': TopicRule.ALL,  'deny': TopicRule.ALL, 'paths': {'/etc/foo/*', '/etc/foo/dovecot-database.conf.ext'                        }    }),
+#         (('/etc/foo/auth.d/authfoo.conf',       False,  False), {'allow': TopicRule.ALL,  'deny': TopicRule.ALL, 'paths': {'/etc/foo/{auth,conf}.d/*.conf', '/etc/foo/{auth,conf}.d/authfoo.conf'    }    }),
+#         (('/etc/foo/auth.d/authfoo.conf',       True,   False), {'allow': {'p'     }   ,  'deny': set()        , 'paths': {'/etc/foo/{auth,conf}.d/authfoo.conf'                                     }    }),
+#         (('/etc/foo/dovecot-deny.conf',         False,  False), {'allow': TopicRule.ALL,  'deny': TopicRule.ALL, 'paths': {'/etc/foo/*', '/etc/foo/dovecot-deny.conf'                                }    }),
+#         (('/foo/bar',                           False,  True ), {'allow': set()        ,  'deny': TopicRule.ALL, 'paths': set()                                                                           }),
+#         (('/etc/foo/dovecot-deny.conf',         False,  True ), {'allow': set()        ,  'deny': TopicRule.ALL, 'paths': {'/etc/foo/dovecot-deny.conf'                                              }    }),
+#         (('/etc/foo/foo.conf',                  False,  True ), {'allow': set()        ,  'deny': TopicRule.ALL, 'paths': set()                                                                           }),
+#     ]
+#
+#     def _run_test(self, params, expected):
+#         rules = [
+#             'topic /etc/foo/* r,',
+#             'audit topic /etc/foo/dovecot.conf rps,',
+#             'topic /etc/foo/{auth,conf}.d/*.conf r,',
+#             'audit topic /etc/foo/{auth,conf}.d/authfoo.conf p,',
+#             'topic /etc/foo/dovecot-database.conf.ext p,',
+#             'deny topic /etc/foo/dovecot-deny.conf r,',
+#             # 'topic,',
+#             # 'deny topic,',
+#         ]
+#
+#         ruleset = TopicRuleset()
+#         for rule in rules:
+#             ruleset.add(TopicRule.parse(rule))
+#
+#         perms = ruleset.get_perms_for_path(params[0], params[1], params[2])
+#         self. assertEqual(perms, expected)
 
 
 setup_all_loops(__name__)
