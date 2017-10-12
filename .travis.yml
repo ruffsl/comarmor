@@ -3,16 +3,20 @@ language: python
 python:
   - 3.5
 
-sudo: true
-dist: xenial
+sudo: false
 
 install:
-  - pip install coverage nose flake8 mock
-  - pip install git+https://github.com/PyCQA/flake8-import-order.git
-  - sudo apt install python3-apparmor
+  - git clone https://git.launchpad.net/~sbeattie/apparmor/+git/apparmor
+  - ln -s python-tools-setup.py apparmor/utils/setup.py
+  - pip install -e apparmor/utils/
+  # - pip install -r requirements.txt
+  - pip install -r tests/requirements.txt
+  # - sudo apt install python3-apparmor
 
 script:
-  - python setup.py nosetests -s
+  # - python setup.py nosetests -s
+  - pip install -e .
+  - cd tests && python test-topic.py
 
 notifications:
   email: false
