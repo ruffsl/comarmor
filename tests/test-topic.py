@@ -490,34 +490,28 @@ class TopicSeverityTest(CATest):
         rank = obj.severity(sev_db)
         self.assertEqual(rank, expected)
 
-class FileLogprofHeaderTest(AATest):
+class TopicLogprofHeaderTest(CATest):
     tests = [
         # log event                        old perms ALL / owner
-        (['file,',                              set(),      set()       ], [                               _('Path'), _('ALL'),                                         _('New Mode'), _('ALL')                 ]),
-        (['/foo r,',                            set(),      set()       ], [                               _('Path'), '/foo',                                           _('New Mode'), 'r'                      ]),
-        (['file /bar Px -> foo,',               set(),      set()       ], [                               _('Path'), '/bar',                                           _('New Mode'), 'Px -> foo'              ]),
-        (['deny file,',                         set(),      set()       ], [_('Qualifier'), 'deny',        _('Path'), _('ALL'),                                         _('New Mode'), _('ALL')                 ]),
-        (['allow file /baz rwk,',               set(),      set()       ], [_('Qualifier'), 'allow',       _('Path'), '/baz',                                           _('New Mode'), 'rwk'                    ]),
-        (['audit file /foo mr,',                set(),      set()       ], [_('Qualifier'), 'audit',       _('Path'), '/foo',                                           _('New Mode'), 'mr'                     ]),
-        (['audit deny /foo wk,',                set(),      set()       ], [_('Qualifier'), 'audit deny',  _('Path'), '/foo',                                           _('New Mode'), 'wk'                     ]),
-        (['owner file /foo ix,',                set(),      set()       ], [                               _('Path'), '/foo',                                           _('New Mode'), 'owner ix'               ]),
-        (['audit deny file /foo rlx -> /baz,',  set(),      set()       ], [_('Qualifier'), 'audit deny',  _('Path'), '/foo',                                           _('New Mode'), 'rlx -> /baz'            ]),
-        (['/foo rw,',                           set('r'),   set()       ], [                               _('Path'), '/foo',         _('Old Mode'), _('r'),            _('New Mode'), _('rw')                  ]),
-        (['/foo rw,',                           set(),      set('rw')   ], [                               _('Path'), '/foo',         _('Old Mode'), _('owner rw'),     _('New Mode'), _('rw')                  ]),
-        (['/foo mrw,',                          set('r'),   set('k')    ], [                               _('Path'), '/foo',         _('Old Mode'), _('r + owner k'),  _('New Mode'), _('mrw')                 ]),
-        (['/foo mrw,',                          set('r'),   set('rk')   ], [                               _('Path'), '/foo',         _('Old Mode'), _('r + owner k'),  _('New Mode'), _('mrw')                 ]),
+        # (['topic,',                              set(),      ], [                               _('Path'), _('ALL'),                                         _('New Mode'), _('ALL')                 ]),
+        (['topic /foo r,',                       set(),      ], [                               _('Path'), '/foo',                                           _('New Mode'), 'r'                      ]),
+        (['deny topic /foo r,',                  set(),      ], [_('Qualifier'), 'deny',        _('Path'), '/foo',                                           _('New Mode'), 'r'                      ]),
+        (['allow topic /baz psr,',               set(),      ], [_('Qualifier'), 'allow',       _('Path'), '/baz',                                           _('New Mode'), 'psr'                    ]),
+        (['audit topic /foo pr,',                set(),      ], [_('Qualifier'), 'audit',       _('Path'), '/foo',                                           _('New Mode'), 'pr'                     ]),
+        (['audit deny topic /foo ps,',           set(),      ], [_('Qualifier'), 'audit deny',  _('Path'), '/foo',                                           _('New Mode'), 'ps'                     ]),
+        (['topic /foo ps,',                      set('s'),   ], [                               _('Path'), '/foo',         _('Old Mode'), _('s'),            _('New Mode'), _('ps')                 ]),
    ]
 
     def _run_test(self, params, expected):
-        obj = FileRule._parse(params[0])
-        if params[1] or params[2]:
-            obj.original_perms = {'allow': { 'all': params[1], 'owner': params[2]}}
+        obj = TopicRule._parse(params[0])
+        if params[1]:
+            obj.original_perms = {'allow': params[1]}
         self.assertEqual(obj.logprof_header(), expected)
 
     def test_empty_original_perms(self):
-        obj = FileRule._parse('/foo rw,')
-        obj.original_perms = {'allow': { 'all': set(), 'owner': set()}}
-        self.assertEqual(obj.logprof_header(), [_('Path'), '/foo', _('New Mode'), _('rw')])
+        obj = TopicRule._parse('topic /foo pr,')
+        obj.original_perms = {'allow': set()}
+        self.assertEqual(obj.logprof_header(), [_('Path'), '/foo', _('New Mode'), _('pr')])
 
 class FileEditHeaderTest(AATest):
     def _run_test(self, params, expected):

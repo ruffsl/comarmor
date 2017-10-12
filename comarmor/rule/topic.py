@@ -210,7 +210,7 @@ class TopicRule(BaseRule):
         old_mode = ''
         if self.original_perms:
             original_perms_all = self._join_given_perms(
-                self.original_perms['allow'], None)
+                self.original_perms['allow'])
 
             if original_perms_all:
                 old_mode = original_perms_all
