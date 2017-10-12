@@ -15,22 +15,23 @@
 
 import unittest
 from collections import namedtuple
-from common_test import AATest, setup_all_loops
+from common_test import CATest, setup_all_loops
 
-from apparmor.rule.file import FileRule, FileRuleset
-from apparmor.rule import BaseRule
+from comarmor.rule.topic import TopicRule, TopicRuleset
+from comarmor.rule import BaseRule
 import apparmor.severity as severity
 from apparmor.common import AppArmorException, AppArmorBug
-from apparmor.logparser import ReadLog
+from comarmor.common import ComArmorException, ComArmorBug
+# from apparmor.logparser import ReadLog
 from apparmor.translations import init_translation
 _ = init_translation()
 
 exp = namedtuple('exp', ['audit', 'allow_keyword', 'deny', 'comment',
-        'path', 'all_paths', 'perms', 'all_perms', 'exec_perms', 'target', 'all_targets', 'owner', 'file_keyword', 'leading_perms'])
+        'path', 'all_paths', 'perms', 'all_perms'])
 
-# --- tests for single FileRule --- #
+# --- tests for single TopicRule --- #
 
-class FileTest(AATest):
+class TopicTest(CATest):
     def _compare_obj(self, obj, expected):
         self.assertEqual(obj.allow_keyword, expected.allow_keyword)
         self.assertEqual(obj.audit, expected.audit)
@@ -39,16 +40,9 @@ class FileTest(AATest):
 
         self._assertEqual_aare(obj.path, expected.path)
         self.assertEqual(obj.perms, expected.perms)
-        self.assertEqual(obj.exec_perms, expected.exec_perms)
-        self._assertEqual_aare(obj.target, expected.target)
-        self.assertEqual(obj.owner, expected.owner)
-        self.assertEqual(obj.file_keyword, expected.file_keyword)
-        self.assertEqual(obj.leading_perms, expected.leading_perms)
 
-        # Note: there's no all_ field for exec_perms, owner, file_keyword and leading_perms
         self.assertEqual(obj.all_paths, expected.all_paths)
         self.assertEqual(obj.all_perms, expected.all_perms)
-        self.assertEqual(obj.all_targets, expected.all_targets)
 
     def _assertEqual_aare(self, obj, expected):
         if obj:
@@ -56,273 +50,196 @@ class FileTest(AATest):
         else:
             self.assertEqual(obj, expected)
 
-class FileTestParse(FileTest):
+class TopicTestParse(TopicTest):
     tests = [
-        # FileRule object                             audit  allow  deny   comment    path              all_paths   perms           all?    exec_perms  target      all?    owner   file keyword    leading perms
+        # TopicRule object                             audit  allow  deny   comment    path                  all_paths?  perms              all_perms?
 
-        # bare file rules
-        ('file,'                                , exp(False, False, False, '',        None,             True ,      None,           True,   None,       None,       True,   False,  False,          False       )),
-        ('allow file,'                          , exp(False, True,  False, '',        None,             True ,      None,           True,   None,       None,       True,   False,  False,          False       )),
-        ('audit deny owner file, # cmt'         , exp(True,  False, True,  ' # cmt',  None,             True ,      None,           True,   None,       None,       True,   True,   False,          False       )),
+        # "normal" topic rules
+        ('topic /foo r,'                         , exp(False, False, False, '',        '/foo',               False,      {'r'},             False,  )),
+        ('topic /foo spr,'                       , exp(False, False, False, '',        '/foo',               False,      {'s', 'p', 'r'},   False,  )),
+        ('topic @{PROC}/[a-z]** sp,'             , exp(False, False, False, '',        '@{PROC}/[a-z]**',    False,      {'s', 'p'},        False,  )),
 
-        # "normal" file rules
-        ('/foo r,'                              , exp(False, False, False, '',        '/foo',           False,      {'r'},          False,  None,       None,       True,   False,  False,          False       )),
-        ('file /foo rwix,'                      , exp(False, False, False, '',        '/foo',           False,      {'r', 'w'},     False,  'ix',       None,       True,   False,  True,           False       )),
-        ('/foo Px -> bar,'                      , exp(False, False, False, '',        '/foo',           False,      set(),          False,  'Px',       'bar',      False,  False,  False,          False       )),
-        ('@{PROC}/[a-z]** mr,'                  , exp(False, False, False, '',        '@{PROC}/[a-z]**',False,      {'r', 'm'},     False,  None,       None,       True,   False,  False,          False       )),
+        ('audit topic /tmp/foo r,'               , exp(True,  False, False, '',        '/tmp/foo',           False,      {'r'},             False,  )),
+        ('audit deny topic /tmp/foo r,'          , exp(True,  False, True,  '',        '/tmp/foo',           False,      {'r'},             False,  )),
+        ('audit deny topic /tmp/foo sr,'         , exp(True,  False, True,  '',        '/tmp/foo',           False,      {'s', 'r'},        False,  )),
+        ('allow topic /tmp/foo rs,'              , exp(False, True,  False, '',        '/tmp/foo',           False,      {'r', 's'},        False,  )),
+        ('audit allow topic /tmp/foo rs,'        , exp(True,  True,  False, '',        '/tmp/foo',           False,      {'r', 's'},        False,  )),
 
-        ('audit /tmp/foo r,'                    , exp(True,  False, False, '',        '/tmp/foo',       False,      {'r'},          False,  None,       None,       True,   False,  False,          False       )),
-        ('audit deny /tmp/foo r,'               , exp(True,  False, True,  '',        '/tmp/foo',       False,      {'r'},          False,  None,       None,       True,   False,  False,          False       )),
-        ('audit deny /tmp/foo rx,'              , exp(True,  False, True,  '',        '/tmp/foo',       False,      {'r'},          False,  'x',        None,       True,   False,  False,          False       )),
-        ('allow /tmp/foo ra,'                   , exp(False, True,  False, '',        '/tmp/foo',       False,      {'r', 'a'},     False,  None,       None,       True,   False,  False,          False       )),
-        ('audit allow /tmp/foo ra,'             , exp(True,  True,  False, '',        '/tmp/foo',       False,      {'r', 'a'},     False,  None,       None,       True,   False,  False,          False       )),
-
-
-        # file rules with leading permission
-        ('r /foo,'                              , exp(False, False, False, '',        '/foo',           False,      {'r'},          False,  None,       None,       True,   False,  False,          True        )),
-        ('file rwix /foo,'                      , exp(False, False, False, '',        '/foo',           False,      {'r', 'w'},     False,  'ix',       None,       True,   False,  True,           True        )),
-        ('Px /foo -> bar,'                      , exp(False, False, False, '',        '/foo',           False,      set(),          False,  'Px',       'bar',      False,  False,  False,          True        )),
-        ('mr @{PROC}/[a-z]**,'                  , exp(False, False, False, '',        '@{PROC}/[a-z]**',False,      {'r', 'm'},     False,  None,       None,       True,   False,  False,          True        )),
-
-        ('audit r /tmp/foo,'                    , exp(True,  False, False, '',        '/tmp/foo',       False,      {'r'},          False,  None,       None,       True,   False,  False,          True        )),
-        ('audit deny r /tmp/foo,'               , exp(True,  False, True,  '',        '/tmp/foo',       False,      {'r'},          False,  None,       None,       True,   False,  False,          True        )),
-        ('allow ra /tmp/foo,'                   , exp(False, True,  False, '',        '/tmp/foo',       False,      {'r', 'a'},     False,  None,       None,       True,   False,  False,          True        )),
-        ('audit allow ra /tmp/foo,'             , exp(True,  True,  False, '',        '/tmp/foo',       False,      {'r', 'a'},     False,  None,       None,       True,   False,  False,          True        )),
-
-        # duplicated (but not conflicting) permissions
-        ('/foo PxPxPxPxrwPx -> bar,'            , exp(False, False, False, '',        '/foo',           False,      {'r', 'w'},     False,  'Px',       'bar',      False,  False,  False,          False       )),
-        ('/foo CixCixrwCix -> bar, '            , exp(False, False, False, '',        '/foo',           False,      {'r', 'w'},     False,  'Cix',      'bar',      False,  False,  False,          False       )),
+        # "normal" topic rules with comment
+        ('topic /foo r, # cmt'                   , exp(False, False, False, ' # cmt',  '/foo',               False,      {'r'},             False,  )),
     ]
 
     def _run_test(self, rawrule, expected):
-        self.assertTrue(FileRule.match(rawrule))
-        obj = FileRule.parse(rawrule)
+        self.assertTrue(TopicRule.match(rawrule))
+        obj = TopicRule.parse(rawrule)
         self.assertEqual(rawrule.strip(), obj.raw_rule)
         self._compare_obj(obj, expected)
 
-class FileTestParseInvalid(FileTest):
+class TopicTestNonMatch(CATest):
     tests = [
-        ('/foo x,'                      , AppArmorException),  # should be *x
-        ('/foo raw,'                    , AppArmorException),  # r and a conflict
-        ('deny /foo ix,'                , AppArmorException),  # endy only allows x, but not *x
-        ('deny /foo Px,'                , AppArmorException),  # deny only allows x, but not *x
-        ('deny /foo Pi,'                , AppArmorException),  # missing 'x', and P not allowed
-        ('allow /foo x,'                , AppArmorException),  # should be *x
-        ('/foo Pxrix,'                  , AppArmorException),  # exec mode conflict
-        ('/foo PixUx,'                  , AppArmorException),  # exec mode conflict
-        ('/foo PxUx,'                   , AppArmorException),  # exec mode conflict
-        ('/foo PUxPix,'                 , AppArmorException),  # exec mode conflict
-        ('/foo Pi,'                     , AppArmorException),  # missing 'x'
+        ('topic,'            , False ), # is bare
+        ('topic /foo,'       , False ), # missing perm
+        ('topic sp,'         , False ), # missing path
+        ('topic sp /foo,'    , False ), # out of order path and perm
+        ('/foo sp,'          , False ), # missing keyword
+        ('service /foo sp,'  , False ), # wrong keyword
     ]
 
     def _run_test(self, rawrule, expected):
-        self.assertTrue(FileRule.match(rawrule))  # the above invalid rules still match the main regex!
-        with self.assertRaises(expected):
-            FileRule.parse(rawrule)
+        self.assertFalse(TopicRule.match(rawrule))
 
-class FileTestNonMatch(AATest):
-    tests = [
-        ('file /foo,'       , False ),
-        ('file rw,'         , False ),
-        ('file -> bar,'     , False ),
-        ('file Px -> bar,'  , False ),
-        ('/foo bar,'        , False ),
-        ('dbus /foo,'       , False ),
-    ]
+# class FileTestParseFromLog(FileTest):
+#     def test_file_from_log(self):
+#         parser = ReadLog('', '', '', '')
+#         event = 'Nov 11 07:33:07 myhost kernel: [50812.879558] type=1502 audit(1236774787.169:369): operation="inode_permission" requested_mask="::r" denied_mask="::r" fsuid=1000 name="/bin/dash" pid=13726 profile="/bin/foobar"'
+#
+#         parsed_event = parser.parse_event(event)
+#
+#         self.assertEqual(parsed_event, {
+#             'request_mask': '::r',
+#             'denied_mask': '::r',
+#             'error_code': 0,
+#             'magic_token': 0,
+#             'parent': 0,
+#             'profile': '/bin/foobar',
+#             'operation': 'inode_permission',
+#             'name': '/bin/dash',
+#             'name2': None,
+#             'resource': None,
+#             'info': None,
+#             'aamode': 'PERMITTING',
+#             'time': 1236774787,
+#             'active_hat': None,
+#             'pid': 13726,
+#             'task': 0,
+#             'attr': None,
+#             'family': None,
+#             'protocol': None,
+#             'sock_type': None,
+#         })
+#
+#         #FileRule#     path,                 perms,                         exec_perms, target,         owner,  file_keyword,   leading_perms
+#         #obj = FileRule(parsed_event['name'], parsed_event['denied_mask'],   None,       FileRule.ALL,   False,  False,          False,         )
+#         obj = FileRule(parsed_event['name'], 'r',                           None,       FileRule.ALL,   False,  False,          False,         )
+#         # XXX handle things like '::r'
+#         # XXX split off exec perms?
+#
+#         #              audit  allow  deny   comment    path              all_paths   perms           all?    exec_perms  target      all?    owner   file keyword    leading perms
+#         expected = exp(False, False, False, '',        '/bin/dash',      False,      {'r'},          False,  None,       None,       True,   False,  False,          False       )
+#
+#         self._compare_obj(obj, expected)
+#
+#         self.assertEqual(obj.get_raw(1), '  /bin/dash r,')
 
-    def _run_test(self, rawrule, expected):
-        self.assertFalse(FileRule.match(rawrule))
-
-class FileTestParseFromLog(FileTest):
-    def test_file_from_log(self):
-        parser = ReadLog('', '', '', '')
-        event = 'Nov 11 07:33:07 myhost kernel: [50812.879558] type=1502 audit(1236774787.169:369): operation="inode_permission" requested_mask="::r" denied_mask="::r" fsuid=1000 name="/bin/dash" pid=13726 profile="/bin/foobar"'
-
-        parsed_event = parser.parse_event(event)
-
-        self.assertEqual(parsed_event, {
-            'request_mask': '::r',
-            'denied_mask': '::r',
-            'error_code': 0,
-            'magic_token': 0,
-            'parent': 0,
-            'profile': '/bin/foobar',
-            'operation': 'inode_permission',
-            'name': '/bin/dash',
-            'name2': None,
-            'resource': None,
-            'info': None,
-            'aamode': 'PERMITTING',
-            'time': 1236774787,
-            'active_hat': None,
-            'pid': 13726,
-            'task': 0,
-            'attr': None,
-            'family': None,
-            'protocol': None,
-            'sock_type': None,
-        })
-
-        #FileRule#     path,                 perms,                         exec_perms, target,         owner,  file_keyword,   leading_perms
-        #obj = FileRule(parsed_event['name'], parsed_event['denied_mask'],   None,       FileRule.ALL,   False,  False,          False,         )
-        obj = FileRule(parsed_event['name'], 'r',                           None,       FileRule.ALL,   False,  False,          False,         )
-        # XXX handle things like '::r'
-        # XXX split off exec perms?
-
-        #              audit  allow  deny   comment    path              all_paths   perms           all?    exec_perms  target      all?    owner   file keyword    leading perms
-        expected = exp(False, False, False, '',        '/bin/dash',      False,      {'r'},          False,  None,       None,       True,   False,  False,          False       )
-
-        self._compare_obj(obj, expected)
-
-        self.assertEqual(obj.get_raw(1), '  /bin/dash r,')
-
-class FileFromInit(FileTest):
+class TopicFromInit(TopicTest):
     tests = [
 
-        #FileRule# path,            perms,  exec_perms, target,         owner,  file_keyword,   leading_perms
-        (FileRule(  '/foo',         'rw',   None,       FileRule.ALL,   False,  False,          False,          audit=True,     deny=True   ),
-                    #exp#   audit   allow   deny    comment     path            all_paths   perms           all?    exec_perms  target      all?    owner   file keyword    leading perms
-                    exp(    True,   False,  True,   '',         '/foo',         False,      {'r', 'w'},     False,  None,       None,       True,   False,  False,          False       )),
+        #TopicRule# path,           perms,
+        (TopicRule( '/foo',         'ps',   audit=True,     deny=True   ),
+                    #exp#   audit   allow   deny    comment     path            all_paths?  perms           all_perms?
+                    exp(    True,   False,  True,   '',         '/foo',         False,      {'p', 's'},     False     )),
 
-        #FileRule# path,            perms,  exec_perms, target,         owner,  file_keyword,   leading_perms
-        (FileRule(  '/foo',         None,   'Pix',      'bar_prof',     True,   True,           True,           allow_keyword=True          ),
-                    #exp#   audit   allow   deny    comment     path            all_paths   perms           all?    exec_perms  target      all?    owner   file keyword    leading perms
-                    exp(    False,  True,   False,  '',         '/foo',         False,      set(),          False,  'Pix',      'bar_prof', False,  True,   True,           True        )),
+        #TopicRule# path,           perms,  audit   deny            allow_keyword           comment='',     log_event=None
+        (TopicRule( '/foo',         'r',    False,  False,          allow_keyword=True,     comment=' # bar'    ),
+                    #exp#   audit   allow   deny    comment     path            all_paths?  perms           all_perms?
+                    exp(    False,  True,   False,  ' # bar',   '/foo',         False,      {'r'},          False,    )),
 
     ]
 
     def _run_test(self, obj, expected):
         self._compare_obj(obj, expected)
 
-class InvalidFileInit(AATest):
+class InvalidTopicInit(CATest):
     tests = [
-        #FileRule# path,            perms,  exec_perms, target,         owner,  file_keyword,   leading_perms
+        #TopicRule#  path,           perms
 
         # empty fields
-        (        (  '',             'rw',   'ix',       '/bar',         False,  False,          False   ), AppArmorBug),
-          # OK   (  '/foo',         '',     'ix',       '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   '',         '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '',             False,  False,          False   ), AppArmorBug),
+        (        (  '',             'spr',   ), AppArmorBug),
+        (        (  '/foo',         '',      ), ComArmorBug),
 
         # whitespace fields
-        (        (  '   ',          'rw',   'ix',       '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         '   ',  'ix',       '/bar',         False,  False,          False   ), AppArmorException),
-        (        (  '/foo',         'rw',   '   ',      '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '   ',          False,  False,          False   ), AppArmorBug),
+        (        (  '   ',          'spr',   ), AppArmorBug),
+        (        (  '/foo',         '   ',   ), ComArmorException),
 
         # wrong type - dict()
-        (        (  dict(),         'rw',   'ix',       '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         dict(), 'ix',       '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   dict(),     '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       dict(),         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '/bar',         dict(), False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '/bar',         False,  dict(),         False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '/bar',         False,  False,          dict()  ), AppArmorBug),
+        (        (  dict(),         'spr',   ), AppArmorBug),
+        (        (  '/foo',         dict(),  ), ComArmorBug),
 
 
         # wrong type - None
-        (        (  None,           'rw',   'ix',       '/bar',         False,  False,          False   ), AppArmorBug),
-          # OK   (  '/foo',         None,   'ix',       '/bar',         False,  False,          False   ), AppArmorBug),
-          # OK   (  '/foo',         'rw',   None,       '/bar',         False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       None,           False,  False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '/bar',         None,   False,          False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '/bar',         False,  None,           False   ), AppArmorBug),
-        (        (  '/foo',         'rw',   'ix',       '/bar',         False,  False,          None    ), AppArmorBug),
+        (        (  None,           'spr',   ), AppArmorBug),
+        (        (  '/foo',         None,    ), ComArmorBug),
 
 
         # misc
-        (        (  '/foo',         'rwa',  'ix',       '/bar',         False,  False,          False   ), AppArmorException),  # 'r' and 'a' conflict
-        (        (  '/foo',         None,   'rw',       '/bar',         False,  False,          False   ), AppArmorBug),        # file perms in exec perms parameter
-        (        (  '/foo',         'ix',   None,       '/bar',         False,  False,          False   ), AppArmorBug),        # exec perms in file perms parameter
-        (        (  'foo',          'rw',   'ix',       '/bar',         False,  False,          False   ), AppArmorException),  # path doesn't start with /
-        (        (  '/foo',         'rb',   'ix',       '/bar',         False,  False,          False   ), AppArmorException),  # invalid file mode 'b' (str)
-        (        (  '/foo',         {'b'},  'ix',       '/bar',         False,  False,          False   ), AppArmorBug),        # invalid file mode 'b' (str)
-        (        (  '/foo',         'rw',   'ax',       '/bar',         False,  False,          False   ), AppArmorBug),        # invalid exec mode 'ax'
-        (        (  '/foo',         'rw',   'x',        '/bar',         False,  False,          False   ), AppArmorException),  # plain 'x' is only allowed in deny rules
-        (        (  FileRule.ALL,   FileRule.ALL, None, '/bar',         False,  False,          False   ), AppArmorBug),        # plain 'file,' doesn't allow exec target
+        (        (  'foo',          'spr',   ), AppArmorException),   # path doesn't start with /
+        (        (  '/foo',         'rb',    ), ComArmorException),   # invalid file mode 'b' (str)
+        (        (  '/foo',         {'b'},   ), ComArmorBug),         # invalid file mode 'b' (str)
+        (        (  TopicRule.ALL,   TopicRule.ALL  ), ComArmorBug),  # plain 'topic,' not allowed
     ]
 
     def _run_test(self, params, expected):
         with self.assertRaises(expected):
-            FileRule(params[0], params[1], params[2], params[3], params[4], params[5], params[6])
+            TopicRule(params[0], params[1])
+
+    def test_missing_params_0(self):
+        with self.assertRaises(TypeError):
+            TopicRule()
 
     def test_missing_params_1(self):
         with self.assertRaises(TypeError):
-            FileRule(  '/foo')
+            TopicRule('/foo')
 
-    def test_missing_params_2(self):
-        with self.assertRaises(TypeError):
-            FileRule(  '/foo',         'rw')
-
-    def test_missing_params_3(self):
-        with self.assertRaises(TypeError):
-            FileRule(  '/foo',         'rw',   'ix')
-
-    def test_missing_params_4(self):
-        with self.assertRaises(TypeError):
-            FileRule(  '/foo',         'rw',   'ix',       '/bar')
-
-    def test_deny_ix(self):
-        with self.assertRaises(AppArmorException):
-            FileRule(  '/foo',         'rw',   'ix',       '/bar',         False,  False,       False,  deny=True)
-
-class InvalidFileTest(AATest):
+class InvalidTopicTest(CATest):
     def _check_invalid_rawrule(self, rawrule):
         obj = None
-        self.assertFalse(FileRule.match(rawrule))
-        with self.assertRaises(AppArmorException):
-            obj = FileRule(FileRule.parse(rawrule))
+        self.assertFalse(TopicRule.match(rawrule))
+        with self.assertRaises(ComArmorException):
+            obj = TopicRule(TopicRule.parse(rawrule))
 
-        self.assertIsNone(obj, 'FileRule handed back an object unexpectedly')
+        self.assertIsNone(obj, 'TopicRule handed back an object unexpectedly')
 
-    def test_invalid_file_missing_comma_1(self):
-        self._check_invalid_rawrule('file')  # missing comma
+    def test_invalid_topic_missing_comma_1(self):
+        self._check_invalid_rawrule('topic')  # missing comma
 
-    def test_invalid_non_FileRule(self):
-        self._check_invalid_rawrule('signal,')  # not a file rule
+    def test_invalid_non_TopicRule(self):
+        self._check_invalid_rawrule('signal,')  # not a topic rule
 
-class BrokenFileTest(AATest):
-    def AASetup(self):
-        #FileRule#          path,           perms,  exec_perms, target,         owner,  file_keyword,   leading_perms
-        self.obj = FileRule('/foo',         'rw',   'ix',       '/bar',         False,  False,          False)
+class BrokenTopicTest(CATest):
+    def CASetup(self):
+        #TopicRule#          path,           perms
+        self.obj = TopicRule('/foo',         'psr')
 
     def test_empty_data_1(self):
         self.obj.path = ''
         # no path set, and ALL not set
-        with self.assertRaises(AppArmorBug):
+        with self.assertRaises(ComArmorBug):
             self.obj.get_clean(1)
 
     def test_empty_data_2(self):
         self.obj.perms = ''
-        self.obj.exec_perms = ''
-        # no perms or exec_perms set, and ALL not set
-        with self.assertRaises(AppArmorBug):
-            self.obj.get_clean(1)
-
-    def test_empty_data_3(self):
-        self.obj.target = ''
-        # no target set, and ALL not set
-        with self.assertRaises(AppArmorBug):
+        # no perms set, and ALL not set
+        with self.assertRaises(ComArmorBug):
             self.obj.get_clean(1)
 
     def test_unexpected_all_1(self):
-        self.obj.all_paths = FileRule.ALL
+        self.obj.all_paths = TopicRule.ALL
         # all_paths and all_perms must be in sync
-        with self.assertRaises(AppArmorBug):
+        with self.assertRaises(ComArmorBug):
             self.obj.get_clean(1)
 
     def test_unexpected_all_2(self):
-        self.obj.all_perms = FileRule.ALL
+        self.obj.all_perms = TopicRule.ALL
         # all_paths and all_perms must be in sync
-        with self.assertRaises(AppArmorBug):
+        with self.assertRaises(ComArmorBug):
             self.obj.get_clean(1)
 
-class FileGlobTest(AATest):
+class TopicGlobTest(CATest):
     def _run_test(self, params, expected):
         exp_can_glob, exp_can_glob_ext, exp_rule_glob, exp_rule_glob_ext = expected
 
         # test glob()
-        rule_obj = FileRule.parse(params)
+        rule_obj = TopicRule.parse(params)
         self.assertEqual(exp_can_glob, rule_obj.can_glob)
         self.assertEqual(exp_can_glob_ext, rule_obj.can_glob_ext)
 
@@ -330,28 +247,28 @@ class FileGlobTest(AATest):
         self.assertEqual(rule_obj.get_clean(), exp_rule_glob)
 
         # test glob_ext()
-        rule_obj = FileRule.parse(params)
+        rule_obj = TopicRule.parse(params)
         self.assertEqual(exp_can_glob, rule_obj.can_glob)
         self.assertEqual(exp_can_glob_ext, rule_obj.can_glob_ext)
 
         rule_obj.glob_ext()
         self.assertEqual(rule_obj.get_clean(), exp_rule_glob_ext)
 
-    # These tests are meant to ensure AARE integration in FileRule works as expected.
+    # These tests are meant to ensure AARE integration in TopicRule works as expected.
     # test-aare.py has more comprehensive globbing tests.
     tests = [
-        # rule               can glob   can glob_ext    globbed rule        globbed_ext rule
-        ('/foo/bar r,',     (True,      True,           '/foo/* r,',        '/foo/bar r,')),
-        ('/foo/* r,',       (True,      True,           '/** r,',           '/foo/* r,')),
-        ('/foo/bar.xy r,',  (True,      True,           '/foo/* r,',        '/foo/*.xy r,')),
-        ('/foo/*.xy r,',    (True,      True,           '/foo/* r,',        '/**.xy r,')),
-        ('file,',           (False,     False,          'file,',            'file,')),  # bare 'file,' rules can't be globbed
+        # rule                      can glob   can glob_ext    globbed rule        globbed_ext rule
+        ('topic /foo/bar r,',     (True,      True,           'topic /foo/* r,',   'topic /foo/bar r,')),
+        ('topic /foo/* r,',       (True,      True,           'topic /** r,',      'topic /foo/* r,')),
+        ('topic /foo/bar.xy r,',  (True,      True,           'topic /foo/* r,',   'topic /foo/*.xy r,')),
+        ('topic /foo/*.xy r,',    (True,      True,           'topic /foo/* r,',   'topic /**.xy r,')),
+        # ('topic,',           (False,     False,          'topic,',            'topic,')),  # bare 'topic,' rules can't be globbed
     ]
 
-class WriteFileTest(AATest):
+class WriteTopicTest(CATest):
     def _run_test(self, rawrule, expected):
-       self.assertTrue(FileRule.match(rawrule), 'FileRule.match() failed')
-       obj = FileRule.parse(rawrule)
+       self.assertTrue(TopicRule.match(rawrule), 'TopicRule.match() failed')
+       obj = TopicRule.parse(rawrule)
        clean = obj.get_clean()
        raw = obj.get_raw()
 
@@ -360,65 +277,44 @@ class WriteFileTest(AATest):
 
     tests = [
         #  raw rule                                                           clean rule
-        ('file,'                                                            , 'file,'),
-        ('              file        ,  # foo        '                       , 'file, # foo'),
-        ('    audit     file /foo r,'                                       , 'audit file /foo r,'),
-        ('    audit     file /foo  lwr,'                                    , 'audit file /foo rwl,'),
-        ('    audit     file /foo Pxrm -> bar,'                             , 'audit file /foo mrPx -> bar,'),
-        ('    deny      file /foo r,'                                       , 'deny file /foo r,'),
-        ('    deny      file /foo  wr,'                                     , 'deny file /foo rw,'),
-        ('    allow     file /foo Pxrm -> bar,'                             , 'allow file /foo mrPx -> bar,'),
-        ('    deny    owner  /foo r,'                                       , 'deny owner /foo r,'),
-        ('    deny    owner  /foo  wr,'                                     , 'deny owner /foo rw,'),
-        ('    allow   owner  /foo Pxrm -> bar,'                             , 'allow owner /foo mrPx -> bar,'),
-        ('                   /foo r,'                                       , '/foo r,'),
-        ('                   /foo  lwr,'                                    , '/foo rwl,'),
-        ('                   /foo Pxrm -> bar,'                             , '/foo mrPx -> bar,'),
-
-        # with leading permissions
-        ('    audit     file r      /foo,'                                  , 'audit file r /foo,'),
-        ('    audit     file lwr    /foo,'                                  , 'audit file rwl /foo,'),
-        ('    audit     file Pxrm   /foo -> bar,'                           , 'audit file mrPx /foo -> bar,'),
-        ('    deny      file r      /foo,'                                  , 'deny file r /foo,'),
-        ('    deny      file wr     /foo  ,'                                , 'deny file rw /foo,'),
-        ('    allow     file Pxmr   /foo -> bar,'                           , 'allow file mrPx /foo -> bar,'),
-        ('    deny    owner  r      /foo ,'                                 , 'deny owner r /foo,'),
-        ('    deny    owner  wr     /foo  ,'                                , 'deny owner rw /foo,'),
-        ('    allow   owner  Pxrm   /foo -> bar,'                           , 'allow owner mrPx /foo -> bar,'),
-        ('                   r      /foo ,'                                 , 'r /foo,'),
-        ('                   klwr   /foo  ,'                                , 'rwlk /foo,'),
-        ('                   Pxrm   /foo -> bar,'                           , 'mrPx /foo -> bar,'),
+        # ('topic,'                                                            , 'topic,'),
+        # ('              topic        ,  # foo        '                       , 'topic, # foo'),
+        ('    audit     topic /foo r,'                                       , 'audit topic /foo r,'),
+        ('    audit     topic /foo  rsp,'                                    , 'audit topic /foo psr,'),  # re-order perms by topic_permissions array
+        ('    deny      topic /foo r,'                                       , 'deny topic /foo r,'),
+        ('    deny      topic /foo  sp,'                                     , 'deny topic /foo ps,'),
+        ('    allow      topic /foo r,'                                      , 'allow topic /foo r,'),
+        ('    allow      topic /foo  sp,'                                    , 'allow topic /foo ps,'),
+        ('    audit   deny      topic /foo r,'                               , 'audit deny topic /foo r,'),
+        ('    audit   deny      topic /foo  sp,'                             , 'audit deny topic /foo ps,'),
+        ('    audit   allow      topic /foo r,'                              , 'audit allow topic /foo r,'),
+        ('    audit   allow      topic /foo  sp,'                            , 'audit allow topic /foo ps,'),
   ]
 
     def test_write_manually_1(self):
-       #FileRule#      path,           perms,  exec_perms, target,         owner,  file_keyword,   leading_perms
-       obj = FileRule( '/foo',         'rw',   'Px',       '/bar',         False,  True,           False,       allow_keyword=True)
+       #TopicRule#      path,           perms
+       obj = TopicRule( '/foo',         'sp',  allow_keyword=True)
 
-       expected = '    allow file /foo rwPx -> /bar,'
+       expected = '    allow topic /foo ps,'
 
        self.assertEqual(expected, obj.get_clean(2), 'unexpected clean rule')
        self.assertEqual(expected, obj.get_raw(2), 'unexpected raw rule')
 
     def test_write_manually_2(self):
-       #FileRule#      path,           perms,  exec_perms, target,         owner,  file_keyword,   leading_perms
-       obj = FileRule( '/foo',         'rw',   'x',        FileRule.ALL,   True,   False,          True,        deny=True)
+       #TopicRule#      path,           perms
+       obj = TopicRule( '/foo',         'rp',  deny=True)
 
-       expected = '    deny owner rwx /foo,'
+       expected = '    deny topic /foo pr,'
 
        self.assertEqual(expected, obj.get_clean(2), 'unexpected clean rule')
        self.assertEqual(expected, obj.get_raw(2), 'unexpected raw rule')
 
-    def test_write_any_exec(self):
-        obj   = FileRule( '/foo',         'rw',   FileRule.ANY_EXEC,'/bar',    False,  False,          False)
-        with self.assertRaises(AppArmorBug):
-            obj.get_clean()
-
-class FileCoveredTest(AATest):
+class TopicCoveredTest(CATest):
     def _run_test(self, param, expected):
-        obj = FileRule.parse(self.rule)
-        check_obj = FileRule.parse(param)
+        obj = TopicRule.parse(self.rule)
+        check_obj = TopicRule.parse(param)
 
-        self.assertTrue(FileRule.match(param))
+        self.assertTrue(TopicRule.match(param))
 
         self.assertEqual(obj.is_equal(check_obj), expected[0], 'Mismatch in is_equal, expected %s' % expected[0])
         self.assertEqual(obj.is_equal(check_obj, True), expected[1], 'Mismatch in is_equal/strict, expected %s' % expected[1])
@@ -426,103 +322,94 @@ class FileCoveredTest(AATest):
         self.assertEqual(obj.is_covered(check_obj), expected[2], 'Mismatch in is_covered, expected %s' % expected[2])
         self.assertEqual(obj.is_covered(check_obj, True, True), expected[3], 'Mismatch in is_covered/exact, expected %s' % expected[3])
 
-class FileCoveredTest_01(FileCoveredTest):
-    rule = 'file /foo r,'
+class TopicCoveredTest_01(TopicCoveredTest):
+    rule = 'topic /foo r,'
 
     tests = [
         #   rule                                            equal     strict equal    covered     covered exact
-        ('file /foo r,'                                 , [ True    , True          , True      , True      ]),
-        ('file /foo r ,'                                , [ True    , False         , True      , True      ]),
-        ('allow file /foo r,'                           , [ True    , False         , True      , True      ]),
-        ('allow /foo r, # comment'                      , [ True    , False         , True      , True      ]),
-        ('allow owner /foo r,'                          , [ False   , False         , True      , True      ]),
-        ('/foo r -> bar,'                               , [ False   , False         , True      , True      ]),
-        ('file r /foo,'                                 , [ True    , False         , True      , True      ]),
-        ('allow file r /foo,'                           , [ True    , False         , True      , True      ]),
-        ('allow r /foo, # comment'                      , [ True    , False         , True      , True      ]),
-        ('allow owner r /foo,'                          , [ False   , False         , True      , True      ]),
-        ('r /foo -> bar,'                               , [ False   , False         , True      , True      ]),
-        ('file,'                                        , [ False   , False         , False     , False     ]),
-        ('file /foo w,'                                 , [ False   , False         , False     , False     ]),
-        ('file /foo rw,'                                , [ False   , False         , False     , False     ]),
-        ('file /bar r,'                                 , [ False   , False         , False     , False     ]),
-        ('audit /foo r,'                                , [ False   , False         , False     , False     ]),
-        ('audit file,'                                  , [ False   , False         , False     , False     ]),
-        ('audit deny /foo r,'                           , [ False   , False         , False     , False     ]),
-        ('deny file /foo r,'                            , [ False   , False         , False     , False     ]),
-        ('/foo rPx,'                                    , [ False   , False         , False     , False     ]),
-        ('/foo Pxr,'                                    , [ False   , False         , False     , False     ]),
-        ('/foo Px,'                                     , [ False   , False         , False     , False     ]),
-        ('/foo ix,'                                     , [ False   , False         , False     , False     ]),
-        ('/foo ix -> bar,'                              , [ False   , False         , False     , False     ]),
-        ('/foo rPx -> bar,'                             , [ False   , False         , False     , False     ]),
+        ('topic /foo r,'                                 , [ True    , True          , True      , True      ]),
+        ('topic /foo r ,'                                , [ True    , False         , True      , True      ]),
+        ('allow topic /foo r,'                           , [ True    , False         , True      , True      ]),
+        ('allow topic /foo r, # comment'                 , [ True    , False         , True      , True      ]),
+        # ('topic,'                                        , [ False   , False         , False     , False     ]),
+        ('topic /foo p,'                                 , [ False   , False         , False     , False     ]),
+        ('topic /foo rp,'                                , [ False   , False         , False     , False     ]),
+        ('topic /bar r,'                                 , [ False   , False         , False     , False     ]),
+        ('audit topic /foo r,'                           , [ False   , False         , False     , False     ]),
+        # ('audit topic,'                                  , [ False   , False         , False     , False     ]),
+        ('audit deny topic /foo r,'                      , [ False   , False         , False     , False     ]),
+        ('deny topic /foo r,'                            , [ False   , False         , False     , False     ]),
     ]
 
-class FileCoveredTest_02(FileCoveredTest):
-    rule = 'audit /foo r,'
+class TopicCoveredTest_02(TopicCoveredTest):
+    rule = 'audit topic /foo r,'
 
     tests = [
         #   rule                                            equal     strict equal    covered     covered exact
-        ('file /foo r,'                                 , [ False   , False         , True      , False     ]),
-        ('allow file /foo r,'                           , [ False   , False         , True      , False     ]),
-        ('allow /foo r, # comment'                      , [ False   , False         , True      , False     ]),
-        ('allow owner /foo r,'                          , [ False   , False         , True      , False     ]),
-        ('/foo r -> bar,'                               , [ False   , False         , True      , False     ]),
-        ('file r /foo,'                                 , [ False   , False         , True      , False     ]),
-        ('allow file r /foo,'                           , [ False   , False         , True      , False     ]),
-        ('allow r /foo, # comment'                      , [ False   , False         , True      , False     ]),
-        ('allow owner r /foo,'                          , [ False   , False         , True      , False     ]),
-        ('r /foo -> bar,'                               , [ False   , False         , True      , False     ]), # XXX exact
-        ('file,'                                        , [ False   , False         , False     , False     ]),
-        ('file /foo w,'                                 , [ False   , False         , False     , False     ]),
-        ('file /foo rw,'                                , [ False   , False         , False     , False     ]),
-        ('file /bar r,'                                 , [ False   , False         , False     , False     ]),
-        ('audit /foo r,'                                , [ True    , True          , True      , True      ]),
-        ('audit file,'                                  , [ False   , False         , False     , False     ]),
-        ('audit deny /foo r,'                           , [ False   , False         , False     , False     ]),
-        ('deny file /foo r,'                            , [ False   , False         , False     , False     ]),
-        ('/foo rPx,'                                    , [ False   , False         , False     , False     ]),
-        ('/foo Pxr,'                                    , [ False   , False         , False     , False     ]),
-        ('/foo Px,'                                     , [ False   , False         , False     , False     ]),
-        ('/foo ix,'                                     , [ False   , False         , False     , False     ]),
-        ('/foo ix -> bar,'                              , [ False   , False         , False     , False     ]),
-        ('/foo rPx -> bar,'                             , [ False   , False         , False     , False     ]),
+        ('topic /foo r,'                                 , [ False   , False         , True      , False     ]),
+        ('allow topic /foo r,'                           , [ False   , False         , True      , False     ]),
+        ('allow topic /foo r, # comment'                 , [ False   , False         , True      , False     ]),
+        # # ('topic,'                                        , [ False   , False         , False     , False     ]),
+        ('topic /foo p,'                                 , [ False   , False         , False     , False     ]),
+        ('topic /foo rp,'                                , [ False   , False         , False     , False     ]),
+        ('topic /bar r,'                                 , [ False   , False         , False     , False     ]),
+        ('audit topic /foo r,'                           , [ True    , True          , True      , True      ]),
+        # ('audit topic,'                                  , [ False   , False         , False     , False     ]),
+        ('audit deny topic /foo r,'                      , [ False   , False         , False     , False     ]),
+        ('deny topic /foo r,'                            , [ False   , False         , False     , False     ]),
     ]
 
-class FileCoveredTest_03(FileCoveredTest):
-    rule = '/foo mrwPx,'
+class TopicCoveredTest_03(TopicCoveredTest):
+    rule = 'topic /foo spr,'
 
     tests = [
         #   rule                                            equal     strict equal    covered     covered exact
-        ('file /foo r,'                                 , [ False   , False         , True      , True      ]),
-        ('allow file /foo r,'                           , [ False   , False         , True      , True      ]),
-        ('allow /foo r, # comment'                      , [ False   , False         , True      , True      ]),
-        ('allow owner /foo r,'                          , [ False   , False         , True      , True      ]),
-        ('/foo r -> bar,'                               , [ False   , False         , True      , True      ]),
-        ('file r /foo,'                                 , [ False   , False         , True      , True      ]),
-        ('allow file r /foo,'                           , [ False   , False         , True      , True      ]),
-        ('allow r /foo, # comment'                      , [ False   , False         , True      , True      ]),
-        ('allow owner r /foo,'                          , [ False   , False         , True      , True      ]),
-        ('r /foo -> bar,'                               , [ False   , False         , True      , True      ]),
-        ('file,'                                        , [ False   , False         , False     , False     ]),
-        ('file /foo w,'                                 , [ False   , False         , True      , True      ]),
-        ('file /foo rw,'                                , [ False   , False         , True      , True      ]),
-        ('file /bar r,'                                 , [ False   , False         , False     , False     ]),
-        ('audit /foo r,'                                , [ False   , False         , False     , False     ]),
-        ('audit file,'                                  , [ False   , False         , False     , False     ]),
-        ('audit deny /foo r,'                           , [ False   , False         , False     , False     ]),
-        ('deny file /foo r,'                            , [ False   , False         , False     , False     ]),
-        ('/foo mrwPx,'                                  , [ True    , True          , True      , True      ]),
-        ('/foo wPxrm,'                                  , [ True    , False         , True      , True      ]),
-        ('/foo rm,'                                     , [ False   , False         , True      , True      ]),
-        ('/foo Px,'                                     , [ False   , False         , True      , True      ]),
-        ('/foo ix,'                                     , [ False   , False         , False     , False     ]),
-        ('/foo ix -> bar,'                              , [ False   , False         , False     , False     ]),
-        ('/foo mrwPx -> bar,'                           , [ False   , False         , False     , False     ]),
+        ('topic /foo r,'                                 , [ False   , False         , True      , True      ]),
+        ('allow topic /foo r,'                           , [ False   , False         , True      , True      ]),
+        ('allow topic /foo r, # comment'                 , [ False   , False         , True      , True      ]),
+        # ('topic,'                                        , [ False   , False         , False     , False     ]),
+        ('topic /foo p,'                                 , [ False   , False         , True      , True      ]),
+        ('topic /foo rp,'                                , [ False   , False         , True      , True      ]),
+        ('topic /bar r,'                                 , [ False   , False         , False     , False     ]),
+        ('audit topic /foo r,'                           , [ False   , False         , False     , False     ]),
+        # ('audit topic,'                                  , [ False   , False         , False     , False     ]),
+        ('audit deny topic /foo r,'                      , [ False   , False         , False     , False     ]),
+        ('deny topic /foo r,'                            , [ False   , False         , False     , False     ]),
+        ('topic /foo spr,'                               , [ True    , True          , True      , True      ]),
+        ('topic /foo rps,'                               , [ True    , False         , True      , True      ]),
     ]
 
-class FileCoveredTest_04(FileCoveredTest):
-    rule = '/foo mrwPx -> bar,'
+# class TopicCoveredTest_05(TopicCoveredTest):
+#     rule = 'topic,'
+#
+#     tests = [
+#         #   rule                                            equal     strict equal    covered     covered exact
+#         ('topic /foo r,'                                 , [ False   , False         , True      , True      ]),
+#         ('allow topic /foo r,'                           , [ False   , False         , True      , True      ]),
+#         ('allow /foo r, # comment'                      , [ False   , False         , True      , True      ]),
+#         ('allow owner /foo r,'                          , [ False   , False         , True      , True      ]),
+#         ('/foo r -> bar,'                               , [ False   , False         , True      , True      ]),
+#         ('topic r /foo,'                                 , [ False   , False         , True      , True      ]),
+#         ('allow topic r /foo,'                           , [ False   , False         , True      , True      ]),
+#         ('allow r /foo, # comment'                      , [ False   , False         , True      , True      ]),
+#         ('allow owner r /foo,'                          , [ False   , False         , True      , True      ]),
+#         ('r /foo -> bar,'                               , [ False   , False         , True      , True      ]),
+#         ('topic,'                                        , [ True    , True          , True      , True      ]),
+#         ('topic /foo w,'                                 , [ False   , False         , True      , True      ]),
+#         ('topic /foo rw,'                                , [ False   , False         , True      , True      ]),
+#         ('topic /bar r,'                                 , [ False   , False         , True      , True      ]),
+#         ('audit /foo r,'                                , [ False   , False         , False     , False     ]),
+#         ('audit topic,'                                  , [ False   , False         , False     , False     ]),
+#         ('audit deny /foo r,'                           , [ False   , False         , False     , False     ]),
+#         ('deny topic /foo r,'                            , [ False   , False         , False     , False     ]),
+#         ('/foo mrwPx,'                                  , [ False   , False         , False     , False     ]),
+#         ('/foo wPxrm,'                                  , [ False   , False         , False     , False     ]),
+#         ('/foo rm,'                                     , [ False   , False         , True      , True      ]),
+#         ('/foo Px,'                                     , [ False   , False         , False     , False     ]),
+#         ('/foo ix,'                                     , [ False   , False         , False     , False     ]),
+#         ('/foo ix -> bar,'                              , [ False   , False         , False     , False     ]),
+#         ('/foo mrwPx -> bar,'                           , [ False   , False         , False     , False     ]),
+#     ]
 
     tests = [
         #   rule                                            equal     strict equal    covered     covered exact
