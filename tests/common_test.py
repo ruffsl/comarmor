@@ -25,12 +25,12 @@ import tempfile
     #    self.assertEqual(apparmor.common.readkey().lower(), 'y', 'Error reading key from shell!')
 
 
-class AATest(unittest.TestCase):
+class CATest(unittest.TestCase):
     def setUp(self):
         self.maxDiff = None
-        self.AASetup()
+        self.CASetup()
 
-    def AASetup(self):
+    def CASetup(self):
         '''override this function if a test needs additional setup steps (instead of overriding setUp())'''
         pass
 
@@ -38,14 +38,14 @@ class AATest(unittest.TestCase):
         if self.tmpdir and os.path.exists(self.tmpdir):
             shutil.rmtree(self.tmpdir)
 
-        self.AATeardown()
+        self.CATeardown()
 
-    def AATeardown(self):
+    def CATeardown(self):
         '''override this function if a test needs additional teardown steps (instead of overriding tearDown())'''
         pass
 
     def createTmpdir(self):
-        self.tmpdir = tempfile.mkdtemp(prefix='aa-test-')
+        self.tmpdir = tempfile.mkdtemp(prefix='ca-test-')
 
     def writeTmpfile(self, file, contents):
         if not self.tmpdir:
@@ -55,7 +55,7 @@ class AATest(unittest.TestCase):
     tests = []
     tmpdir = None
 
-class AAParseTest(unittest.TestCase):
+class CAParseTest(unittest.TestCase):
     parse_function = None
 
     def _test_parse_rule(self, rule):
@@ -92,7 +92,7 @@ def setup_tests_loop(test_class):
 
 
 def setup_regex_tests(test_class):
-    '''Create tests in test_class using test_class.tests and AAParseTest._test_parse_rule()
+    '''Create tests in test_class using test_class.tests and CAParseTest._test_parse_rule()
 
     test_class.tests should be tuples of (line, description)
     '''
@@ -103,13 +103,14 @@ def setup_regex_tests(test_class):
         stub_test.__doc__ = "test '%s': %s" % (line, desc)
         setattr(test_class, 'test_%d' % (i), stub_test)
 
-def setup_aa(aa):
-    confdir = os.getenv('__AA_CONFDIR')
+def setup_ca(aa):
+    confdir = os.getenv('__CA_CONFDIR')
     try:
         if confdir:
             aa.init_aa(confdir=confdir)
         else:
-            aa.init_aa()
+            confdir="/etc/comarmor"
+            aa.init_aa(confdir=confdir)
     except AttributeError:
         # apparmor.aa module versions <= 2.11 do not have the init_aa() method
         pass
