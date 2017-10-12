@@ -68,8 +68,10 @@ class TopicRule(BaseRule):
             perms, tmp_exec_perms = split_perms(perms, deny)
             if tmp_exec_perms:
                 raise ComArmorBug('perms must not contain exec perms')
-        elif perms is None:
-            perms = set()
+            elif not perms:
+                raise ComArmorBug('perms must not be empty')
+        elif (not isinstance(perms, set)) or (perms is None):
+            raise ComArmorBug('perms must be a set', type(perms))
 
         self.perms, self.all_perms, unknown_items = check_and_split_list(
             perms, topic_permissions, TopicRule.ALL,
