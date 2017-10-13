@@ -9,14 +9,10 @@ install:
   - git clone https://git.launchpad.net/~sbeattie/apparmor/+git/apparmor
   - ln -s python-tools-setup.py apparmor/utils/setup.py
   - pip install -e apparmor/utils/
-  # - pip install -r requirements.txt
   - pip install -r tests/requirements.txt
-  # - sudo apt install python3-apparmor
 
 script:
-  # - python setup.py nosetests -s
-  - pip install -e .
-  - cd tests && python test-topic.py
+  - python setup.py nosetests -s
 
 notifications:
   email: false

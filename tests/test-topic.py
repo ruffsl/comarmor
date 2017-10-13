@@ -14,9 +14,11 @@
 #
 # ----------------------------------------------------------------------
 
+import os
 import unittest
+
 from collections import namedtuple
-from common_test import CATest, setup_all_loops
+from common import CATest, setup_all_loops
 
 from comarmor.rule.topic import TopicRule, TopicRuleset
 from comarmor.rule import BaseRule
@@ -26,6 +28,8 @@ from comarmor.common import ComArmorException, ComArmorBug
 # from apparmor.logparser import ReadLog
 from apparmor.translations import init_translation
 _ = init_translation()
+
+PWD = os.path.dirname(os.path.realpath(__file__))
 
 exp = namedtuple('exp', ['audit', 'allow_keyword', 'deny', 'comment',
         'path', 'all_paths', 'perms', 'all_perms'])
@@ -486,7 +490,7 @@ class TopicSeverityTest(CATest):
     ]
 
     def _run_test(self, params, expected):
-        sev_db = severity.TopicSeverity('topic-severity.db', 'unknown')
+        sev_db = severity.TopicSeverity(os.path.join(PWD, 'data/topic-severity.db'), 'unknown')
         obj = TopicRule.parse(params)
         rank = obj.severity(sev_db)
         self.assertEqual(rank, expected)
