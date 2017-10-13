@@ -3,24 +3,29 @@ import sys
 from setuptools import find_packages
 from setuptools import setup
 
-version='0.0.0'
+if sys.version_info < (3, 5):
+    print('comarmor requires Python 3.5 or higher.', file=sys.stderr)
+    sys.exit(1)
+
+version = '0.0.0'
 
 install_requires = [
+    # 'apparmor',
     'setuptools',
 ]
 tests_require = [
     'nose',
 ]
 
-package_excludes = ['tests*', 'docs*']
+package_excludes = ['tests', 'docs']
 packages = find_packages(exclude=package_excludes)
 
 setup(
     name='comarmor',
     version=version,
-    packages=['comarmor'],
+    packages=packages,
     url='https://github.com/ComArmor/comarmor',
-    download_url = 'https://github.com/ComArmor/comarmor/archive/{}.tar.gz'.format(version),
+    download_url='https://github.com/ComArmor/comarmor/releases',
     license='',
     author='',
     author_email='',

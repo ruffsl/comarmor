@@ -6,8 +6,10 @@ python:
 sudo: false
 
 install:
-  - pip install coverage nose flake8 mock
-  - pip install git+https://github.com/PyCQA/flake8-import-order.git
+  - git clone https://git.launchpad.net/~sbeattie/apparmor/+git/apparmor
+  - ln -s python-tools-setup.py apparmor/utils/setup.py
+  - pip install -e apparmor/utils/
+  - pip install -r tests/requirements.txt
 
 script:
   - python setup.py nosetests -s

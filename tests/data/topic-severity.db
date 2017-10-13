@@ -1,0 +1,25 @@
+# ------------------------------------------------------------------
+#
+#    Copyright (C) 2002-2005 Novell/SUSE
+#    Copyright (C) 2014 Canonical Ltd.
+#    Copyright (C) 2017 Ruffin White <roxfoxpox@gmail.com>
+#
+#    This program is free software; you can redistribute it and/or
+#    modify it under the terms of version 2 of the GNU General Public
+#    License published by the Free Software Foundation.
+#
+# ------------------------------------------------------------------
+
+# Listing of CAPABILITIES:
+#CAP_FOO_BAR 10
+
+# topicname	s p r
+# 'topic' are generally 4 10 0
+/tf**	5 8 0
+/rosout** 2 3 0
+/goal* 4 7 2
+/goal/foo 3 6 1
+/e_stop** 2 10 8
+/*joy* 2 7 6
+/bar/foo* 6 5 4
+/baz/foo** 3 2 1
