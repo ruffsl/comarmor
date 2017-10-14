@@ -1,5 +1,6 @@
 # ----------------------------------------------------------------------
 #    Copyright (C) 2013 Kshitij Gupta <kgupta8592@gmail.com>
+#    Copyright (C) 2017 Ruffin White <roxfoxpox@gmail.com>
 #
 #    This program is free software; you can redistribute it and/or
 #    modify it under the terms of version 2 of the GNU General Public
@@ -14,7 +15,7 @@
 import os
 import sys
 
-import apparmor.aa as apparmor
+import comarmor.ca as apparmor
 import apparmor.ui as aaui
 from apparmor.common import user_perm, cmd
 
@@ -22,7 +23,7 @@ from apparmor.common import user_perm, cmd
 from apparmor.translations import init_translation
 _ = init_translation()
 
-class aa_tools:
+class ca_tools:
     def __init__(self, tool_name, args):
         apparmor.init_aa()
 
@@ -79,13 +80,14 @@ class aa_tools:
                     if '/' not in p:
                         aaui.UI_Info(_("Can't find %(program)s in the system path list. If the name of the application\nis correct, please run 'which %(program)s' as a user with correct PATH\nenvironment set up in order to find the fully-qualified path and\nuse the full path as parameter.") % { 'program': p })
                     else:
-                        aaui.UI_Info(_("%s does not exist, please double-check the path.") % p)
+                        aaui.UI_Info(_("%s does not exist, please double-check the path1.") % p)
                     continue
 
             yield (program, profile)
 
-    def cleanprof_act(self):
+    def cleanprof_act(self, profile_dir):
         # used by aa-cleanprof
+        apparmor.profile_dir = profile_dir
         apparmor.read_profiles()
 
         for (program, profile) in self.get_next_to_profile():
@@ -96,9 +98,12 @@ class aa_tools:
                 if program and not program.startswith('/'):
                     program = aaui.UI_GetString(_('The given program cannot be found, please try with the fully qualified path name of the program: '), '')
                 else:
-                    aaui.UI_Info(_("%s does not exist, please double-check the path.") % program)
+                    aaui.UI_Info(_("%s does not exist, please double-check the path2.") % program)
                     sys.exit(1)
 
+            print("########################")
+            print("profile: ", profile)
+            print("########################")
             if program and apparmor.profile_exists(program):
                 self.clean_profile(program)
 
@@ -106,7 +111,7 @@ class aa_tools:
                 if '/' not in program:
                     aaui.UI_Info(_("Can't find %(program)s in the system path list. If the name of the application\nis correct, please run 'which %(program)s' as a user with correct PATH\nenvironment set up in order to find the fully-qualified path and\nuse the full path as parameter.") % { 'program': program })
                 else:
-                    aaui.UI_Info(_("%s does not exist, please double-check the path.") % program)
+                    aaui.UI_Info(_("%s does not exist, please double-check the path3.") % program)
                     sys.exit(1)
 
     def cmd_disable(self):
@@ -122,63 +127,6 @@ class aa_tools:
 
             aaui.UI_Info(_('Disabling %s.') % output_name)
             self.disable_profile(profile)
-
-            self.unload_profile(profile)
-
-    def cmd_enforce(self):
-        apparmor.read_profiles()
-
-        for (program, profile) in self.get_next_to_profile():
-
-            output_name = profile if program is None else program
-
-            if not os.path.isfile(profile) or apparmor.is_skippable_file(profile):
-                aaui.UI_Info(_('Profile for %s not found, skipping') % output_name)
-                continue
-
-            apparmor.set_enforce(profile, program)
-
-            self.reload_profile(profile)
-
-    def cmd_complain(self):
-        apparmor.read_profiles()
-
-        for (program, profile) in self.get_next_to_profile():
-
-            output_name = profile if program is None else program
-
-            if not os.path.isfile(profile) or apparmor.is_skippable_file(profile):
-                aaui.UI_Info(_('Profile for %s not found, skipping') % output_name)
-                continue
-
-            apparmor.set_complain(profile, program)
-
-            self.reload_profile(profile)
-
-    def cmd_audit(self):
-        apparmor.read_profiles()
-
-        for (program, profile) in self.get_next_to_profile():
-
-            output_name = profile if program is None else program
-
-            if not os.path.isfile(profile) or apparmor.is_skippable_file(profile):
-                aaui.UI_Info(_('Profile for %s not found, skipping') % output_name)
-                continue
-
-            # keep this to allow toggling 'audit' flags
-            if not self.remove:
-                aaui.UI_Info(_('Setting %s to audit mode.') % output_name)
-            else:
-                aaui.UI_Info(_('Removing audit mode from %s.') % output_name)
-            apparmor.change_profile_flags(profile, program, 'audit', not self.remove)
-
-            disable_link = '%s/disable/%s' % (apparmor.profile_dir, os.path.basename(profile))
-
-            if os.path.exists(disable_link):
-                aaui.UI_Info(_('\nWarning: the profile %s is disabled. Use aa-enforce or aa-complain to enable it.') % os.path.basename(profile))
-
-            self.reload_profile(profile)
 
     def cmd_autodep(self):
         apparmor.read_profiles()
@@ -237,22 +185,3 @@ class aa_tools:
 
     def disable_profile(self, filename):
         apparmor.create_symlink('disable', filename)
-
-    def unload_profile(self, profile):
-        if not self.do_reload:
-            return
-
-        # FIXME: should ensure profile is loaded before unloading
-        cmd_info = cmd([apparmor.parser, '-I%s' % apparmor.profile_dir, '--base', apparmor.profile_dir, '-R', profile])
-
-        if cmd_info[0] != 0:
-            raise apparmor.AppArmorException(cmd_info[1])
-
-    def reload_profile(self, profile):
-        if not self.do_reload:
-            return
-
-        cmd_info = cmd([apparmor.parser, '-I%s' % apparmor.profile_dir, '--base', apparmor.profile_dir, '-r', profile])
-
-        if cmd_info[0] != 0:
-            raise apparmor.AppArmorException(cmd_info[1])
